@@ -1,0 +1,250 @@
+.header {
+  height: 64px;
+  background-color: var(--bg-panel);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  gap: 20px;
+  z-index: 40;
+}
+
+.leftSection {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logoBadge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.logoImage {
+  height: 38px;
+  width: auto;
+  max-width: 175px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 10px rgba(252, 196, 52, 0.3));
+  transition: transform var(--ease-fast), filter var(--ease-fast);
+}
+
+.logoImage:hover {
+  transform: scale(1.03);
+  filter: drop-shadow(0 2px 14px rgba(130, 87, 229, 0.5)) drop-shadow(0 2px 10px rgba(4, 211, 97, 0.4));
+}
+
+.tagAloTio {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, rgba(130, 87, 229, 0.25) 0%, rgba(4, 211, 97, 0.15) 100%);
+  color: var(--alo-green, #04d361);
+  border: 1px solid rgba(4, 211, 97, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 12px rgba(4, 211, 97, 0.2);
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.tagCloud {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(130, 87, 229, 0.16);
+  color: #d4c2ff;
+  border: 1px solid rgba(130, 87, 229, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background-color: var(--border-default);
+}
+
+.projectNameInput {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  max-width: 280px;
+}
+
+.projectNameInput:hover {
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+}
+
+.projectNameInput:focus {
+  border-color: var(--border-focus);
+  background: var(--bg-surface);
+}
+
+.saveIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.syncDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background-color: var(--accent-emerald);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+.syncDotSaving {
+  background-color: var(--accent-amber);
+  animation: pulseGlow 1s infinite;
+}
+
+.centerSection {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.ratioSelector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ratioSelector:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.ratioSelect {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  outline: none;
+  padding: 0;
+}
+
+.historyGroup {
+  display: flex;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.iconBtn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.rightSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.driveButton {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(130, 87, 229, 0.4);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  color: #d4c2ff;
+  cursor: pointer;
+  transition: all var(--ease-fast);
+}
+
+.driveButton:hover {
+  background: rgba(130, 87, 229, 0.25);
+  border-color: var(--accent-primary);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(130, 87, 229, 0.45);
+}
+
+.avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  border: 2px solid var(--accent-cyan);
+}
+
+.saveBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.saveBtn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.exportBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent-gradient);
+  border: none;
+  padding: 9px 22px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 2px 14px rgba(130, 87, 229, 0.45);
+  transition: all var(--ease-fast);
+}
+
+.exportBtn:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(4, 211, 97, 0.45), 0 0 16px rgba(130, 87, 229, 0.5);
+}

@@ -1,0 +1,349 @@
+.playerWrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  background-color: var(--bg-canvas);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Canvas Viewport */
+.viewportArea {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+  background-image: 
+    radial-gradient(circle at center, rgba(30, 41, 59, 0.3) 0%, rgba(13, 15, 21, 0.85) 100%),
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 28px 28px, 28px 28px;
+}
+
+.aspectFrame {
+  position: relative;
+  background-color: #000;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.85), 0 0 0 1px var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  transition: all var(--ease-normal);
+}
+
+/* Aspect ratio specific sizing: constrained to NEVER overflow viewport in width OR height */
+.frame16x9 {
+  aspect-ratio: 16 / 9;
+  max-width: min(100%, 860px);
+  max-height: 100%;
+  width: auto;
+  height: auto;
+}
+
+.frame9x16 {
+  aspect-ratio: 9 / 16;
+  max-width: 100%;
+  max-height: min(100%, 540px);
+  width: auto;
+  height: auto;
+}
+
+.frame1x1 {
+  aspect-ratio: 1 / 1;
+  max-width: min(100%, 500px);
+  max-height: 100%;
+  width: auto;
+  height: auto;
+}
+
+.frame4x5 {
+  aspect-ratio: 4 / 5;
+  max-width: 100%;
+  max-height: min(100%, 520px);
+  width: auto;
+  height: auto;
+}
+
+.frame21x9 {
+  aspect-ratio: 21 / 9;
+  max-width: min(100%, 960px);
+  max-height: 100%;
+  width: auto;
+  height: auto;
+}
+
+/* Video & Layer Stack */
+.videoLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.loadingSpinnerOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(3px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 20;
+  color: #fff;
+}
+
+.spinnerCircle {
+  width: 38px;
+  height: 38px;
+  border: 3px solid rgba(4, 211, 97, 0.2);
+  border-top-color: var(--accent-cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.emptyStateNotice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Text Overlay Box */
+.textOverlayItem {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  padding: 8px 16px;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  user-select: none;
+  z-index: 10;
+  line-height: 1.25;
+  touch-action: none;
+  transition: box-shadow 0.15s;
+}
+
+.textOverlayItem:active,
+.textOverlayDragging {
+  cursor: grabbing !important;
+  box-shadow: 0 0 25px rgba(4, 211, 97, 0.5);
+}
+
+.textOverlaySelected {
+  outline: 2px dashed var(--accent-cyan);
+  outline-offset: 4px;
+}
+
+.snapGuideLineX {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  border-left: 1.5px dashed var(--accent-cyan);
+  pointer-events: none;
+  z-index: 8;
+  opacity: 0.85;
+}
+
+.snapGuideLineY {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  border-top: 1.5px dashed var(--accent-cyan);
+  pointer-events: none;
+  z-index: 8;
+  opacity: 0.85;
+}
+
+.coordsTooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.95);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 25;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+}
+
+.floatingTextToolbar {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(18, 20, 26, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 20px;
+  padding: 3px 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 25;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.floatingPresetBtn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.floatingPresetBtn:hover {
+  background: rgba(6, 182, 212, 0.3);
+  color: #fff;
+  border-color: #06b6d4;
+}
+
+/* Safe Zone Overlay */
+.safeZoneBorder {
+  position: absolute;
+  inset: 8%;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+
+.timecodeOverlay {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  padding: 5px 10px;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-geist-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+/* Bottom Controls Bar */
+.controlsBar {
+  height: 52px;
+  flex-shrink: 0;
+  background-color: var(--bg-panel);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  position: relative;
+  z-index: 20;
+}
+
+.timecodeGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-geist-mono);
+  font-size: 14px;
+}
+
+.timeCurrent {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.timeTotal {
+  color: var(--text-muted);
+}
+
+.centerButtons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.controlBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  transition: all var(--ease-fast);
+}
+
+.controlBtn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.playPauseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background: var(--accent-gradient);
+  color: #fff;
+  box-shadow: 0 0 18px rgba(130, 87, 229, 0.5);
+  transition: transform var(--ease-fast), box-shadow var(--ease-fast);
+}
+
+.playPauseBtn:hover {
+  transform: scale(1.06);
+  box-shadow: 0 0 22px rgba(4, 211, 97, 0.5);
+}
+
+.rightControls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.volumeGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.volumeSlider {
+  width: 80px;
+}
+
+.speedSelect {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}

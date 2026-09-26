@@ -1,0 +1,238 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modalWindow {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 640px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg), 0 0 30px rgba(130, 87, 229, 0.25);
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  background-color: var(--bg-panel);
+}
+
+.modalTitleGroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modalTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.closeBtn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+}
+
+.closeBtn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.modalBody {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modalFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-subtle);
+  background-color: var(--bg-panel);
+}
+
+/* Google Drive Picker Simulator */
+.driveBrowserGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.driveFileCard {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  cursor: pointer;
+  transition: all var(--ease-fast);
+}
+
+.driveFileCard:hover {
+  border-color: var(--accent-cyan);
+  background-color: var(--bg-elevated);
+}
+
+.driveFileCardSelected {
+  border-color: var(--accent-cyan);
+  background-color: rgba(4, 211, 97, 0.1);
+  box-shadow: 0 0 12px rgba(4, 211, 97, 0.3);
+}
+
+.driveThumb {
+  width: 60px;
+  height: 45px;
+  border-radius: var(--radius-xs);
+  object-fit: cover;
+  background-color: #000;
+}
+
+.driveFileInfo {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.driveFileName {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.driveFileMeta {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* Export Settings */
+.formRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.formLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.selectInput {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.progressBarContainer {
+  width: 100%;
+  height: 8px;
+  background-color: var(--bg-elevated);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.progressBarFill {
+  height: 100%;
+  background: var(--accent-gradient);
+  border-radius: var(--radius-full);
+  transition: width 0.2s ease-out;
+}
+
+/* Action Buttons */
+.cancelBtn {
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+}
+
+.cancelBtn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.primaryBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent-gradient);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(130, 87, 229, 0.45);
+}
+
+.primaryBtn:hover:not(:disabled) {
+  opacity: 0.95;
+  box-shadow: 0 4px 18px rgba(4, 211, 97, 0.45), 0 0 12px rgba(130, 87, 229, 0.4);
+}
+
+/* Shortcuts Table */
+.shortcutList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shortcutItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: var(--bg-panel);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.shortcutKey {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-family: var(--font-geist-mono);
+  color: var(--accent-cyan);
+}

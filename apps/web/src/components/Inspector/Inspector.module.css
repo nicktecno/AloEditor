@@ -1,0 +1,353 @@
+.inspectorContainer {
+  width: 340px;
+  height: 100%;
+  background-color: var(--bg-panel);
+  border-left: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.inspectorTabs {
+  display: flex;
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0 6px;
+}
+
+.tabBtn {
+  flex: 1;
+  padding: 12px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  text-align: center;
+  transition: all var(--ease-fast);
+}
+
+.tabBtn:hover {
+  color: var(--text-primary);
+}
+
+.tabBtnActive {
+  color: var(--accent-cyan);
+  border-bottom-color: var(--accent-cyan);
+  background-color: var(--bg-panel);
+}
+
+.inspectorContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sectionGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.propRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.propLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.propValue {
+  font-size: 12px;
+  font-family: var(--font-geist-mono);
+  font-weight: 600;
+  color: var(--text-primary);
+  width: 48px;
+  text-align: right;
+}
+
+.propSlider {
+  flex: 1;
+}
+
+.textInputArea {
+  width: 100%;
+  min-height: 80px;
+  resize: vertical;
+  font-size: 13px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+}
+
+.colorPickerGroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.colorThumb {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+  padding: 0;
+  overflow: hidden;
+}
+
+.colorThumb input[type="color"] {
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.btnGroup {
+  display: flex;
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.btnGroupItem {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btnGroupItem:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btnGroupItemActive {
+  background-color: var(--accent-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.clipHeaderInfo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: #93c5fd;
+}
+
+.emptySelection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 16px;
+  gap: 14px;
+  color: var(--text-muted);
+}
+
+.propSelect {
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12px;
+  flex: 1;
+  outline: none;
+}
+
+.propSelect:focus {
+  border-color: var(--accent-cyan);
+}
+
+.presetGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.presetButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--ease-fast);
+}
+
+.presetButton:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.presetButtonActive {
+  border-color: var(--accent-cyan) !important;
+  background: rgba(4, 211, 97, 0.15) !important;
+  color: var(--accent-cyan) !important;
+  font-weight: 600;
+}
+
+.quickActionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.quickActionBtn {
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--ease-fast);
+}
+
+.quickActionBtn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-cyan);
+  color: var(--text-primary);
+}
+
+/* Position Grid & Preset Chips for Text */
+.positionGridContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.alignmentGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  width: 130px;
+  margin: 0 auto;
+}
+
+.gridBtn {
+  aspect-ratio: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all var(--ease-fast);
+  padding: 0;
+}
+
+.gridBtn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-cyan);
+  color: var(--text-primary);
+}
+
+.gridBtnActive {
+  background: rgba(4, 211, 97, 0.22) !important;
+  border-color: var(--accent-cyan) !important;
+  color: var(--accent-cyan) !important;
+}
+
+.gridDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.presetChipsWrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.presetChipBtn {
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all var(--ease-fast);
+}
+
+.presetChipBtn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-cyan);
+  color: var(--text-primary);
+}
+
+.presetChipBtnActive {
+  background: rgba(4, 211, 97, 0.2) !important;
+  border-color: var(--accent-cyan) !important;
+  color: var(--accent-cyan) !important;
+  font-weight: 600;
+}
+
+.centerResetBtn {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--ease-fast);
+}
+
+.centerResetBtn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+

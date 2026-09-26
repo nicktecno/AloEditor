@@ -1,0 +1,26 @@
+{
+  "name": "alo-editor-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AloEditor — Web Video Editor Client-Side integrado ao Google Drive",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --prefix apps/web",
+    "dev:web": "npm run dev --prefix apps/web",
+    "dev:api": "npm run start:dev --prefix apps/api",
+    "build:web": "npm run build --prefix apps/web",
+    "build:api": "npm run build --prefix apps/api"
+  },
+  "keywords": [
+    "video-editor",
+    "google-drive",
+    "client-side",
+    "webcodecs",
+    "nextjs",
+    "nestjs"
+  ],
+  "author": "",
+  "license": "MIT"
+}
