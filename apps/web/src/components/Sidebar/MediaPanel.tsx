@@ -21,6 +21,7 @@ import {
   Trash2,
   Zap,
   Scissors,
+  X,
 } from 'lucide-react';
 import { EFFECT_PRESETS, TRANSITION_PRESETS } from '@/utils/transitionUtils';
 import { TimelineClip, TransitionType } from '@/types/editor';
@@ -47,6 +48,8 @@ export const MediaPanel: React.FC = () => {
     driveVideos,
     isDriveLoading,
     loadDriveVideos,
+    toggleSidebar,
+    setMobileView,
   } = useEditor();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'drive' | 'video' | 'audio'>('all');
@@ -254,6 +257,28 @@ export const MediaPanel: React.FC = () => {
 
       {/* Content Area */}
       <div className={styles.contentArea}>
+        <div className={styles.contentTopBar}>
+          <span className={styles.contentCategoryLabel}>
+            {sidebarTab === 'media' && 'Biblioteca de Mídia'}
+            {sidebarTab === 'audio' && 'Trilhas & Efeitos Sonoros'}
+            {sidebarTab === 'text' && 'Textos & Legendas'}
+            {sidebarTab === 'effects' && 'Efeitos Visuais'}
+            {sidebarTab === 'transitions' && 'Transições'}
+            {sidebarTab === 'bg-remover' && 'Remover Fundo'}
+          </span>
+          <button
+            type="button"
+            className={styles.closeContentBtn}
+            onClick={() => {
+              toggleSidebar(false);
+              setMobileView('editor');
+            }}
+            title="Fechar / Ocultar Painel"
+          >
+            <X size={15} />
+          </button>
+        </div>
+
         {sidebarTab === 'media' && (
           <>
             <div className={styles.panelHeader}>

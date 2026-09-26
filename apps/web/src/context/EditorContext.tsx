@@ -53,6 +53,16 @@ interface EditorContextType {
   canUndo: boolean;
   canRedo: boolean;
 
+  // Responsive Layout States
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (open: boolean) => void;
+  toggleSidebar: (force?: boolean) => void;
+  isInspectorOpen: boolean;
+  setIsInspectorOpen: (open: boolean) => void;
+  toggleInspector: (force?: boolean) => void;
+  mobileView: 'editor' | 'media' | 'inspector';
+  setMobileView: (view: 'editor' | 'media' | 'inspector') => void;
+
   // Global Loading State
   isLoading: boolean;
   loadingMessage: string;
@@ -125,11 +135,44 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [currentTime, setCurrentTimeState] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedClipIds, setSelectedClipIds] = useState<string[]>(['clip_video_1']);
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('media');
+  const [sidebarTab, setSidebarTabState] = useState<SidebarTab>('media');
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('video');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+  const [mobileView, setMobileView] = useState<'editor' | 'media' | 'inspector'>('editor');
   const [zoom, setZoom] = useState(60); // 60px = 1 second
   const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
   const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
+
+  // Responsive initial screen detection
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleResize = () => {
+        if (window.innerWidth < 1100) {
+          setIsInspectorOpen(false);
+        }
+        if (window.innerWidth < 768) {
+          setIsSidebarOpen(false);
+        }
+      };
+      handleResize();
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, []);
+
+  const toggleSidebar = useCallback((force?: boolean) => {
+    setIsSidebarOpen((prev) => (force !== undefined ? force : !prev));
+  }, []);
+
+  const toggleInspector = useCallback((force?: boolean) => {
+    setIsInspectorOpen((prev) => (force !== undefined ? force : !prev));
+  }, []);
+
+  const setSidebarTab = useCallback((tab: SidebarTab) => {
+    setSidebarTabState(tab);
+    setIsSidebarOpen(true);
+  }, []);
 
   // Google OAuth Credentials & State
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
@@ -1110,6 +1153,14 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         selectedClip,
         sidebarTab,
         inspectorTab,
+        isSidebarOpen,
+        setIsSidebarOpen,
+        toggleSidebar,
+        isInspectorOpen,
+        setIsInspectorOpen,
+        toggleInspector,
+        mobileView,
+        setMobileView,
         zoom,
         isSnappingEnabled,
         snapGuideTime,

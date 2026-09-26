@@ -381,3 +381,59 @@
   font-weight: 600;
   color: var(--text-secondary);
 }
+
+@media (max-width: 768px) {
+  .controlsBar {
+    height: 48px;
+    padding: 0 10px;
+    gap: 6px;
+  }
+
+  .timecodeGroup {
+    font-size: 12px;
+    gap: 4px;
+  }
+
+  .centerButtons {
+    gap: 4px;
+  }
+
+  .controlBtn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .playPauseBtn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .rightControls {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 600px) {
+  .volumeSlider {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .timeTotal {
+    display: none;
+  }
+
+  .stepBtn {
+    display: none;
+  }
+
+  .speedSelect {
+    display: none;
+  }
+
+  .controlsBar {
+    padding: 0 6px;
+  }
+}
+

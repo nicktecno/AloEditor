@@ -236,3 +236,27 @@
   font-family: var(--font-geist-mono);
   color: var(--accent-cyan);
 }
+
+@media (max-width: 580px) {
+  .modalWindow {
+    width: 95%;
+    max-height: 92vh;
+  }
+
+  .driveBrowserGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .modalHeader {
+    padding: 12px 16px;
+  }
+
+  .modalBody {
+    padding: 14px 16px;
+  }
+
+  .modalFooter {
+    padding: 10px 16px;
+  }
+}
+

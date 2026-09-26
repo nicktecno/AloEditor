@@ -20,6 +20,7 @@ import {
   Zap,
   Scissors,
   VolumeX,
+  X,
 } from 'lucide-react';
 import styles from './Inspector.module.css';
 
@@ -32,6 +33,8 @@ export const PropertiesPanel: React.FC = () => {
     updateClip,
     detachAudioFromClip,
     setIsSilenceModalOpen,
+    toggleInspector,
+    setMobileView,
   } = useEditor();
 
   if (!selectedClip) {
@@ -40,6 +43,13 @@ export const PropertiesPanel: React.FC = () => {
         <div className={styles.inspectorTabs}>
           <button className={`${styles.tabBtn} ${styles.tabBtnActive}`}>
             Projeto
+          </button>
+          <button
+            className={styles.closeInspectorBtn}
+            onClick={() => { toggleInspector(false); setMobileView('editor'); }}
+            title="Fechar Painel"
+          >
+            <X size={16} />
           </button>
         </div>
         <div className={styles.inspectorContent}>
@@ -176,6 +186,13 @@ export const PropertiesPanel: React.FC = () => {
             </button>
           </>
         )}
+        <button
+          className={styles.closeInspectorBtn}
+          onClick={() => { toggleInspector(false); setMobileView('editor'); }}
+          title="Fechar Painel"
+        >
+          <X size={16} />
+        </button>
       </div>
 
       <div className={styles.inspectorContent}>

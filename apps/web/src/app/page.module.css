@@ -76,8 +76,118 @@
 .centerColumn {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background-color: var(--bg-canvas);
+  position: relative;
+}
+
+.sidebarWrapper {
+  display: flex;
+  height: 100%;
+  flex-shrink: 0;
+  transition: all var(--ease-normal);
+}
+
+.inspectorWrapper {
+  display: flex;
+  height: 100%;
+  flex-shrink: 0;
+  transition: all var(--ease-normal);
+}
+
+.panelDesktopHidden {
+  display: none !important;
+}
+
+.timelineContainer {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* Mobile Nav Bar - Hidden on Desktop */
+.mobileNavBar {
+  display: none;
+}
+
+/* ==========================================================================
+   Mobile & Tablet Breakpoints for Page Layout
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .appContainer {
+    height: 100dvh;
+    height: -webkit-fill-available;
+  }
+
+  .sidebarWrapper,
+  .inspectorWrapper {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    background-color: var(--bg-app);
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .panelMobileActive {
+    display: flex !important;
+  }
+
+  .columnMobileHidden {
+    display: none !important;
+  }
+
+  .mobileNavBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    height: 54px;
+    background-color: var(--bg-panel);
+    border-top: 1px solid var(--border-default);
+    padding: 0 6px;
+    z-index: 60;
+    flex-shrink: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .mobileNavBtn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 100%;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+    transition: all var(--ease-fast);
+  }
+
+  .mobileNavBtn:active {
+    transform: scale(0.95);
+  }
+
+  .mobileNavBtnActive {
+    color: var(--accent-cyan);
+    position: relative;
+  }
+
+  .mobileNavBtnActive::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: 24px;
+    height: 3px;
+    background-color: var(--accent-cyan);
+    border-radius: var(--radius-full);
+    box-shadow: 0 0 10px rgba(4, 211, 97, 0.6);
+  }
 }

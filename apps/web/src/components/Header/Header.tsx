@@ -12,6 +12,8 @@ import {
   Save,
   HelpCircle,
   FilePlus,
+  PanelLeft,
+  PanelRight,
 } from 'lucide-react';
 import styles from './Header.module.css';
 
@@ -35,6 +37,10 @@ export const Header: React.FC = () => {
     setIsDrivePickerOpen,
     setIsExportModalOpen,
     setIsShortcutsModalOpen,
+    isSidebarOpen,
+    toggleSidebar,
+    isInspectorOpen,
+    toggleInspector,
   } = useEditor();
 
   const handleRatioChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -140,6 +146,23 @@ export const Header: React.FC = () => {
         >
           <HelpCircle size={15} />
         </button>
+
+        <div className={styles.panelToggleGroup}>
+          <button
+            className={`${styles.iconBtn} ${isSidebarOpen ? styles.iconBtnActive : ''}`}
+            onClick={() => toggleSidebar()}
+            title={isSidebarOpen ? 'Ocultar Painel Lateral (Mídia)' : 'Mostrar Painel Lateral (Mídia)'}
+          >
+            <PanelLeft size={16} />
+          </button>
+          <button
+            className={`${styles.iconBtn} ${isInspectorOpen ? styles.iconBtnActive : ''}`}
+            onClick={() => toggleInspector()}
+            title={isInspectorOpen ? 'Ocultar Inspetor de Propriedades' : 'Mostrar Inspetor de Propriedades'}
+          >
+            <PanelRight size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Right: Google Drive & Export CTA */}

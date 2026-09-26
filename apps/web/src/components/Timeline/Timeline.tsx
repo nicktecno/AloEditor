@@ -58,12 +58,17 @@ export const Timeline: React.FC = () => {
 
   React.useEffect(() => {
     try {
+      const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
       const saved = localStorage.getItem('alo_timeline_height');
       if (saved) {
         const val = parseInt(saved, 10);
         if (!isNaN(val) && val >= 180 && val <= 500) {
           setTimelineHeight(val);
+          return;
         }
+      }
+      if (isMobile) {
+        setTimelineHeight(210);
       }
     } catch {}
   }, []);

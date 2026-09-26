@@ -12,10 +12,19 @@ import { GoogleDriveModal } from '@/components/Modals/GoogleDriveModal';
 import { ExportModal } from '@/components/Modals/ExportModal';
 import { ShortcutsModal } from '@/components/Modals/ShortcutsModal';
 import { SilenceRemoverModal } from '@/components/Modals/SilenceRemoverModal';
+import { Film, FolderOpen, Sliders } from 'lucide-react';
 import styles from './page.module.css';
 
 const EditorLayout: React.FC = () => {
-  const { isLoading, loadingMessage, isSavingToDrive } = useEditor();
+  const {
+    isLoading,
+    loadingMessage,
+    isSavingToDrive,
+    mobileView,
+    setMobileView,
+    isSidebarOpen,
+    isInspectorOpen,
+  } = useEditor();
 
   const showGlobalLoading = isLoading || isSavingToDrive;
   const currentMessage = isSavingToDrive ? 'Salvando projeto no Google Drive...' : loadingMessage;
@@ -39,20 +48,78 @@ const EditorLayout: React.FC = () => {
       {/* Middle Workspace: Sidebar + Player + Inspector */}
       <div className={styles.mainWorkspace}>
         {/* Media & Tools Panel */}
-        <MediaPanel />
+        <div
+          className={`${styles.sidebarWrapper} ${
+            !isSidebarOpen ? styles.panelDesktopHidden : ''
+          } ${mobileView === 'media' ? styles.panelMobileActive : ''}`}
+        >
+          <MediaPanel />
+        </div>
 
         {/* Center: Video Preview & Playback Controls */}
-        <div className={styles.centerColumn}>
+        <div
+          className={`${styles.centerColumn} ${
+            mobileView !== 'editor' ? styles.columnMobileHidden : ''
+          }`}
+        >
           <PlayerPreview />
           <PlayerControls />
         </div>
 
         {/* Right: Clip & Project Inspector */}
-        <PropertiesPanel />
+        <div
+          className={`${styles.inspectorWrapper} ${
+            !isInspectorOpen ? styles.panelDesktopHidden : ''
+          } ${mobileView === 'inspector' ? styles.panelMobileActive : ''}`}
+        >
+          <PropertiesPanel />
+        </div>
       </div>
 
       {/* Bottom: Multitrack Timeline */}
-      <Timeline />
+      <div
+        className={`${styles.timelineContainer} ${
+          mobileView !== 'editor' ? styles.columnMobileHidden : ''
+        }`}
+      >
+        <Timeline />
+      </div>
+
+      {/* Mobile Bottom Navigation Bar (Phone & small tablet only) */}
+      <nav className={styles.mobileNavBar}>
+        <button
+          type="button"
+          className={`${styles.mobileNavBtn} ${
+            mobileView === 'editor' ? styles.mobileNavBtnActive : ''
+          }`}
+          onClick={() => setMobileView('editor')}
+        >
+          <Film size={18} />
+          <span>Editor</span>
+        </button>
+
+        <button
+          type="button"
+          className={`${styles.mobileNavBtn} ${
+            mobileView === 'media' ? styles.mobileNavBtnActive : ''
+          }`}
+          onClick={() => setMobileView('media')}
+        >
+          <FolderOpen size={18} />
+          <span>Mídia</span>
+        </button>
+
+        <button
+          type="button"
+          className={`${styles.mobileNavBtn} ${
+            mobileView === 'inspector' ? styles.mobileNavBtnActive : ''
+          }`}
+          onClick={() => setMobileView('inspector')}
+        >
+          <Sliders size={18} />
+          <span>Ajustes</span>
+        </button>
+      </nav>
 
       {/* Global Modals */}
       <GoogleDriveModal />

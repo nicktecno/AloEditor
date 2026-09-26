@@ -478,3 +478,37 @@
   transform: none;
   box-shadow: none;
 }
+
+@media (max-width: 600px) {
+  .modalWindow {
+    width: 95%;
+    max-height: 92vh;
+  }
+
+  .modalHeader {
+    padding: 12px 16px;
+  }
+
+  .title {
+    font-size: 14px;
+  }
+
+  .modalFooter {
+    flex-direction: column-reverse;
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  .footerActions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .btnCancel,
+  .btnSplitOnly,
+  .btnAutoCut {
+    width: 100%;
+    justify-content: center;
+  }
+}
+

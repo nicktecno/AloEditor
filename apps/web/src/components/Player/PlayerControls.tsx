@@ -84,7 +84,7 @@ export const PlayerControls: React.FC = () => {
         </button>
 
         <button
-          className={styles.controlBtn}
+          className={`${styles.controlBtn} ${styles.stepBtn}`}
           onClick={handleStepBackward}
           title="Recuar 1 segundo"
         >
@@ -100,7 +100,7 @@ export const PlayerControls: React.FC = () => {
         </button>
 
         <button
-          className={styles.controlBtn}
+          className={`${styles.controlBtn} ${styles.stepBtn}`}
           onClick={handleStepForward}
           title="Avançar 1 segundo"
         >

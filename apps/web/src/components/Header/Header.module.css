@@ -248,3 +248,140 @@
   transform: translateY(-1px);
   box-shadow: 0 4px 20px rgba(4, 211, 97, 0.45), 0 0 16px rgba(130, 87, 229, 0.5);
 }
+
+.panelToggleGroup {
+  display: flex;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.iconBtnActive {
+  background-color: rgba(4, 211, 97, 0.15) !important;
+  color: var(--accent-cyan) !important;
+}
+
+/* ==========================================================================
+   Responsive Breakpoints for Header
+   ========================================================================== */
+
+@media (max-width: 1280px) {
+  .tagAloTio,
+  .tagCloud {
+    display: none;
+  }
+
+  .header {
+    padding: 0 16px;
+    gap: 12px;
+  }
+
+  .projectNameInput {
+    max-width: 200px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .saveIndicator span:last-child {
+    display: none;
+  }
+
+  .ratioSelector label {
+    display: none;
+  }
+
+  .ratioSelector {
+    padding: 6px 10px;
+  }
+
+  .projectNameInput {
+    max-width: 150px;
+  }
+
+  .saveBtn span {
+    display: none;
+  }
+
+  .saveBtn {
+    padding: 8px 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    height: 52px;
+    padding: 0 10px;
+    gap: 6px;
+  }
+
+  .logoImage {
+    height: 26px;
+    max-width: 90px;
+  }
+
+  .divider {
+    display: none;
+  }
+
+  .projectNameInput {
+    max-width: 110px;
+    font-size: 13px;
+    padding: 4px 6px;
+  }
+
+  .driveButton span {
+    display: none;
+  }
+
+  .driveButton {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .exportBtn {
+    padding: 6px 12px;
+    font-size: 12px;
+    gap: 4px;
+  }
+
+  .exportBtn span {
+    display: inline-block;
+  }
+
+  .iconBtn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .centerSection {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 520px) {
+  .header {
+    height: 48px;
+    padding: 0 8px;
+  }
+
+  .projectNameInput {
+    max-width: 85px;
+    font-size: 12px;
+  }
+
+  .historyGroup {
+    display: none;
+  }
+
+  .ratioSelector {
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+
+  .exportBtn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}
