@@ -98,8 +98,11 @@
   transition: all var(--ease-normal);
 }
 
-.panelDesktopHidden {
-  display: none !important;
+@media (min-width: 769px) {
+  .sidebarDesktopHidden,
+  .inspectorDesktopHidden {
+    display: none !important;
+  }
 }
 
 .timelineContainer {
@@ -126,15 +129,20 @@
   .sidebarWrapper,
   .inspectorWrapper {
     display: none;
-    position: absolute;
-    inset: 0;
-    z-index: 50;
+    position: fixed;
+    top: 50px;
+    left: 0;
+    right: 0;
+    bottom: 54px;
+    z-index: 100;
     background-color: var(--bg-app);
-    width: 100% !important;
-    height: 100% !important;
+    width: 100vw !important;
+    height: calc(100dvh - 104px) !important;
+    overflow: hidden;
   }
 
-  .panelMobileActive {
+  .sidebarMobileActive,
+  .inspectorMobileActive {
     display: flex !important;
   }
 

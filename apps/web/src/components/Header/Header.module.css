@@ -311,14 +311,24 @@
 
 @media (max-width: 768px) {
   .header {
-    height: 52px;
-    padding: 0 10px;
+    height: 50px;
+    padding: 0 8px;
     gap: 6px;
+    max-width: 100vw;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .leftSection {
+    gap: 5px;
+    min-width: 0;
+    flex-shrink: 1;
+    overflow: hidden;
   }
 
   .logoImage {
-    height: 26px;
-    max-width: 90px;
+    height: 24px;
+    max-width: 75px;
   }
 
   .divider {
@@ -326,62 +336,144 @@
   }
 
   .projectNameInput {
-    max-width: 110px;
-    font-size: 13px;
-    padding: 4px 6px;
-  }
-
-  .driveButton span {
-    display: none;
-  }
-
-  .driveButton {
-    padding: 6px 8px;
-    gap: 6px;
-  }
-
-  .exportBtn {
-    padding: 6px 12px;
+    max-width: 85px;
+    min-width: 45px;
     font-size: 12px;
-    gap: 4px;
+    padding: 3px 5px;
   }
 
-  .exportBtn span {
-    display: inline-block;
+  .btnText {
+    display: none !important;
+  }
+
+  .saveIndicator {
+    display: none !important;
   }
 
   .iconBtn {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
+    padding: 0 !important;
+    justify-content: center;
+    flex-shrink: 0;
   }
 
   .centerSection {
-    gap: 6px;
-  }
-}
-
-@media (max-width: 520px) {
-  .header {
-    height: 48px;
-    padding: 0 8px;
-  }
-
-  .projectNameInput {
-    max-width: 85px;
-    font-size: 12px;
+    gap: 4px;
+    min-width: 0;
+    flex-shrink: 1;
   }
 
   .historyGroup {
-    display: none;
+    display: none !important;
   }
 
   .ratioSelector {
     padding: 4px 6px;
-    font-size: 12px;
+    font-size: 11px;
+    gap: 0;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .ratioSelector label {
+    display: none;
+  }
+
+  .ratioSelect {
+    font-size: 11px;
+    padding: 2px 4px;
+    max-width: 75px;
+  }
+
+  .panelToggleGroup {
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  .rightSection {
+    display: flex !important;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .driveButton {
+    width: 30px;
+    height: 30px;
+    padding: 0 !important;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .driveBtnText {
+    display: none !important;
+  }
+
+  .saveBtn {
+    width: 30px;
+    height: 30px;
+    padding: 0 !important;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .saveBtnText {
+    display: none !important;
   }
 
   .exportBtn {
-    padding: 6px 10px;
+    width: 32px;
+    height: 30px;
+    padding: 0 !important;
+    justify-content: center;
     font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .exportBtnText {
+    display: none !important;
   }
 }
+
+@media (max-width: 500px) {
+  .header {
+    height: 48px;
+    padding: 0 6px;
+    gap: 4px;
+  }
+
+  .logoImage {
+    height: 20px;
+    max-width: 55px;
+  }
+
+  .projectNameInput {
+    max-width: 65px;
+    font-size: 11px;
+    padding: 2px 4px;
+  }
+
+  .panelToggleGroup {
+    display: none !important;
+  }
+
+  .ratioSelect {
+    max-width: 60px;
+    font-size: 10px;
+  }
+
+  .rightSection {
+    gap: 4px;
+  }
+
+  .driveButton,
+  .saveBtn,
+  .exportBtn,
+  .iconBtn {
+    width: 28px;
+    height: 28px;
+  }
+}
+

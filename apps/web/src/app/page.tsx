@@ -24,7 +24,9 @@ const EditorLayout: React.FC = () => {
     mobileView,
     setMobileView,
     isSidebarOpen,
+    setIsSidebarOpen,
     isInspectorOpen,
+    setIsInspectorOpen,
   } = useEditor();
 
   const showGlobalLoading = isLoading || isSavingToDrive;
@@ -51,8 +53,8 @@ const EditorLayout: React.FC = () => {
         {/* Media & Tools Panel */}
         <div
           className={`${styles.sidebarWrapper} ${
-            !isSidebarOpen ? styles.panelDesktopHidden : ''
-          } ${mobileView === 'media' ? styles.panelMobileActive : ''}`}
+            !isSidebarOpen ? styles.sidebarDesktopHidden : ''
+          } ${mobileView === 'media' ? styles.sidebarMobileActive : ''}`}
         >
           <MediaPanel />
         </div>
@@ -70,8 +72,8 @@ const EditorLayout: React.FC = () => {
         {/* Right: Clip & Project Inspector */}
         <div
           className={`${styles.inspectorWrapper} ${
-            !isInspectorOpen ? styles.panelDesktopHidden : ''
-          } ${mobileView === 'inspector' ? styles.panelMobileActive : ''}`}
+            !isInspectorOpen ? styles.inspectorDesktopHidden : ''
+          } ${mobileView === 'inspector' ? styles.inspectorMobileActive : ''}`}
         >
           <PropertiesPanel />
         </div>
@@ -104,7 +106,10 @@ const EditorLayout: React.FC = () => {
           className={`${styles.mobileNavBtn} ${
             mobileView === 'media' ? styles.mobileNavBtnActive : ''
           }`}
-          onClick={() => setMobileView('media')}
+          onClick={() => {
+            setIsSidebarOpen(true);
+            setMobileView('media');
+          }}
         >
           <FolderOpen size={18} />
           <span>Mídia</span>
@@ -115,7 +120,10 @@ const EditorLayout: React.FC = () => {
           className={`${styles.mobileNavBtn} ${
             mobileView === 'inspector' ? styles.mobileNavBtnActive : ''
           }`}
-          onClick={() => setMobileView('inspector')}
+          onClick={() => {
+            setIsInspectorOpen(true);
+            setMobileView('inspector');
+          }}
         >
           <Sliders size={18} />
           <span>Ajustes</span>

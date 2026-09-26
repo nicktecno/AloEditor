@@ -177,16 +177,31 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const toggleSidebar = useCallback((force?: boolean) => {
-    setIsSidebarOpen((prev) => (force !== undefined ? force : !prev));
+    setIsSidebarOpen((prev) => {
+      const next = force !== undefined ? force : !prev;
+      if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+        setMobileView(next ? 'media' : 'editor');
+      }
+      return next;
+    });
   }, []);
 
   const toggleInspector = useCallback((force?: boolean) => {
-    setIsInspectorOpen((prev) => (force !== undefined ? force : !prev));
+    setIsInspectorOpen((prev) => {
+      const next = force !== undefined ? force : !prev;
+      if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+        setMobileView(next ? 'inspector' : 'editor');
+      }
+      return next;
+    });
   }, []);
 
   const setSidebarTab = useCallback((tab: SidebarTab) => {
     setSidebarTabState(tab);
     setIsSidebarOpen(true);
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      setMobileView('media');
+    }
   }, []);
 
   // Google OAuth Credentials & State

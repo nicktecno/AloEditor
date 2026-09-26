@@ -386,7 +386,16 @@
   .inspectorContainer {
     width: 100% !important;
     max-width: 100% !important;
+    height: 100% !important;
     border-left: none;
+    overflow: hidden;
+  }
+
+  .inspectorContent {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    gap: 14px;
   }
 }
 

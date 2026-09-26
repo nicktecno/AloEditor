@@ -40,9 +40,13 @@ export const Header: React.FC = () => {
     setIsShortcutsModalOpen,
     setIsProjectsModalOpen,
     isSidebarOpen,
+    setIsSidebarOpen,
     toggleSidebar,
     isInspectorOpen,
+    setIsInspectorOpen,
     toggleInspector,
+    mobileView,
+    setMobileView,
   } = useEditor();
 
   const handleRatioChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -81,20 +85,18 @@ export const Header: React.FC = () => {
             }
           }}
           title="Iniciar Novo Projeto Vazio"
-          style={{ gap: '5px', fontSize: '11px', padding: '4px 9px', height: '28px', color: 'var(--text-secondary)' }}
         >
           <FilePlus size={14} color="var(--accent-cyan)" />
-          <span>Novo</span>
+          <span className={styles.btnText}>Novo</span>
         </button>
 
         <button
           className={styles.iconBtn}
           onClick={() => setIsProjectsModalOpen(true)}
           title="Abrir / Gerenciar Projetos Salvos"
-          style={{ gap: '5px', fontSize: '11px', padding: '4px 9px', height: '28px', color: 'var(--text-secondary)' }}
         >
           <FolderOpen size={14} color="#818cf8" />
-          <span>Projetos</span>
+          <span className={styles.btnText}>Projetos</span>
         </button>
 
         <div
@@ -161,16 +163,36 @@ export const Header: React.FC = () => {
 
         <div className={styles.panelToggleGroup}>
           <button
-            className={`${styles.iconBtn} ${isSidebarOpen ? styles.iconBtnActive : ''}`}
-            onClick={() => toggleSidebar()}
-            title={isSidebarOpen ? 'Ocultar Painel Lateral (Mídia)' : 'Mostrar Painel Lateral (Mídia)'}
+            className={`${styles.iconBtn} ${
+              (mobileView === 'media' || (isSidebarOpen && mobileView === 'editor')) ? styles.iconBtnActive : ''
+            }`}
+            onClick={() => {
+              if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+                const next = mobileView === 'media' ? 'editor' : 'media';
+                setMobileView(next);
+                setIsSidebarOpen(next === 'media');
+              } else {
+                toggleSidebar();
+              }
+            }}
+            title={mobileView === 'media' ? 'Voltar ao Editor' : 'Mídia e Ferramentas (Esquerda)'}
           >
             <PanelLeft size={16} />
           </button>
           <button
-            className={`${styles.iconBtn} ${isInspectorOpen ? styles.iconBtnActive : ''}`}
-            onClick={() => toggleInspector()}
-            title={isInspectorOpen ? 'Ocultar Inspetor de Propriedades' : 'Mostrar Inspetor de Propriedades'}
+            className={`${styles.iconBtn} ${
+              (mobileView === 'inspector' || (isInspectorOpen && mobileView === 'editor')) ? styles.iconBtnActive : ''
+            }`}
+            onClick={() => {
+              if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+                const next = mobileView === 'inspector' ? 'editor' : 'inspector';
+                setMobileView(next);
+                setIsInspectorOpen(next === 'inspector');
+              } else {
+                toggleInspector();
+              }
+            }}
+            title={mobileView === 'inspector' ? 'Voltar ao Editor' : 'Ajustes e Propriedades (Direita)'}
           >
             <PanelRight size={16} />
           </button>
@@ -185,7 +207,7 @@ export const Header: React.FC = () => {
           title={isDriveConnected ? `Conectado como ${driveUser?.name || 'Google'}. Clique para gerenciar ou escolher vídeos.` : 'Conectar com Google Drive'}
         >
           <Cloud size={15} color={isDriveConnected ? '#10b981' : '#06b6d4'} />
-          <span>{isDriveConnected ? (driveUser?.name?.split(' ')[0] || 'Drive Conectado') : 'Google Drive'}</span>
+          <span className={styles.driveBtnText}>{isDriveConnected ? (driveUser?.name?.split(' ')[0] || 'Drive') : 'Drive'}</span>
           {driveUser?.avatarUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -200,18 +222,19 @@ export const Header: React.FC = () => {
           className={styles.saveBtn}
           onClick={() => saveProjectToDrive()}
           disabled={isSavingToDrive}
-          title="Salvar arquivo de projeto (.json) no Google Drive"
+          title="Salvar arquivo de projeto (.alo.json)"
         >
           <Save size={14} />
-          <span>Salvar</span>
+          <span className={styles.saveBtnText}>Salvar</span>
         </button>
 
         <button
           className={styles.exportBtn}
           onClick={() => setIsExportModalOpen(true)}
+          title="Exportar Vídeo Final"
         >
           <Download size={14} />
-          <span>Exportar</span>
+          <span className={styles.exportBtnText}>Exportar</span>
         </button>
       </div>
     </header>
