@@ -360,6 +360,7 @@ export const PlayerPreview: React.FC = () => {
               onLoadedData={() => setIsBuffering(false)}
               onCanPlay={() => setIsBuffering(false)}
               onPlaying={() => setIsBuffering(false)}
+              onError={() => setIsBuffering(false)}
               style={{
                 display: activeMainClip.backgroundRemoval?.enabled ? 'none' : 'block',
                 transform: `translate(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
