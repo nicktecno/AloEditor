@@ -338,3 +338,54 @@ export async function saveProjectJsonToDrive({
   const result = await uploadRes.json();
   return { fileId: result.id, webViewLink: result.webViewLink };
 }
+
+/**
+ * Lista todos os arquivos de projetos (.alo.json) salvos na pasta AloEditor_Projetos no Google Drive
+ */
+export async function listProjectFilesFromDrive(accessToken: string): Promise<
+  Array<{
+    id: string;
+    name: string;
+    modifiedTime: string;
+    size?: string;
+    webViewLink?: string;
+  }>
+> {
+  const folderId = await getOrCreateProjectsFolder(accessToken);
+  const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime,size,webViewLink)&orderBy=modifiedTime+desc&pageSize=50`;
+
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Falha ao listar projetos no Google Drive: ${errorText}`);
+  }
+
+  const data = await res.json();
+  return (data.files || []).filter((f: any) => f.name.endsWith('.alo.json') || f.name.endsWith('.json'));
+}
+
+/**
+ * Faz o download e carrega o conteúdo JSON do projeto a partir do Google Drive
+ */
+export async function loadProjectJsonFromDrive(accessToken: string, fileId: string): Promise<any> {
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Falha ao baixar projeto do Google Drive: ${errorText}`);
+  }
+
+  return await res.json();
+}
+

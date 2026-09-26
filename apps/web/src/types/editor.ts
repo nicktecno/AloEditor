@@ -123,3 +123,14 @@ export interface Project {
 
 export type SidebarTab = 'media' | 'audio' | 'text' | 'effects' | 'transitions' | 'bg-remover';
 export type InspectorTab = 'video' | 'audio' | 'speed' | 'filters' | 'text' | 'transitions' | 'chroma';
+
+export interface SavedProjectMeta {
+  id: string;
+  name: string;
+  updatedAt: string;
+  clipsCount: number;
+  duration: number;
+  aspectRatio: AspectRatio;
+  driveFileId?: string;
+}
+

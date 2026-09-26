@@ -12,6 +12,7 @@ import {
   Save,
   HelpCircle,
   FilePlus,
+  FolderOpen,
   PanelLeft,
   PanelRight,
 } from 'lucide-react';
@@ -37,6 +38,7 @@ export const Header: React.FC = () => {
     setIsDrivePickerOpen,
     setIsExportModalOpen,
     setIsShortcutsModalOpen,
+    setIsProjectsModalOpen,
     isSidebarOpen,
     toggleSidebar,
     isInspectorOpen,
@@ -83,6 +85,16 @@ export const Header: React.FC = () => {
         >
           <FilePlus size={14} color="var(--accent-cyan)" />
           <span>Novo</span>
+        </button>
+
+        <button
+          className={styles.iconBtn}
+          onClick={() => setIsProjectsModalOpen(true)}
+          title="Abrir / Gerenciar Projetos Salvos"
+          style={{ gap: '5px', fontSize: '11px', padding: '4px 9px', height: '28px', color: 'var(--text-secondary)' }}
+        >
+          <FolderOpen size={14} color="#818cf8" />
+          <span>Projetos</span>
         </button>
 
         <div

@@ -12,6 +12,7 @@ import { GoogleDriveModal } from '@/components/Modals/GoogleDriveModal';
 import { ExportModal } from '@/components/Modals/ExportModal';
 import { ShortcutsModal } from '@/components/Modals/ShortcutsModal';
 import { SilenceRemoverModal } from '@/components/Modals/SilenceRemoverModal';
+import { ProjectsModal } from '@/components/Modals/ProjectsModal';
 import { Film, FolderOpen, Sliders } from 'lucide-react';
 import styles from './page.module.css';
 
@@ -122,6 +123,7 @@ const EditorLayout: React.FC = () => {
       </nav>
 
       {/* Global Modals */}
+      <ProjectsModal />
       <GoogleDriveModal />
       <ExportModal />
       <ShortcutsModal />

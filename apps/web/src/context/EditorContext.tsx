@@ -9,6 +9,7 @@ import {
   AspectRatio,
   SidebarTab,
   InspectorTab,
+  SavedProjectMeta,
 } from '@/types/editor';
 import { INITIAL_PROJECT } from '@/data/initialData';
 import {
@@ -18,6 +19,8 @@ import {
   showGooglePicker,
   listDriveVideos,
   saveProjectJsonToDrive,
+  listProjectFilesFromDrive,
+  loadProjectJsonFromDrive,
   GoogleUserProfile,
   GoogleDriveFile,
 } from '@/services/googleDrive';
@@ -110,6 +113,18 @@ interface EditorContextType {
   setIsExportModalOpen: (open: boolean) => void;
   setIsShortcutsModalOpen: (open: boolean) => void;
   setIsDrivePickerOpen: (open: boolean) => void;
+  isProjectsModalOpen: boolean;
+  setIsProjectsModalOpen: (open: boolean) => void;
+  localProjects: SavedProjectMeta[];
+  loadProject: (project: Project) => void;
+  deleteLocalProject: (id: string) => void;
+  duplicateLocalProject: (id: string) => void;
+  exportProjectAsJson: () => void;
+  importProjectFromJson: (file: File) => Promise<boolean>;
+  driveProjects: Array<{ id: string; name: string; modifiedTime: string; size?: string; webViewLink?: string }>;
+  isDriveProjectsLoading: boolean;
+  loadDriveProjectsList: () => Promise<void>;
+  loadProjectFromDrive: (fileId: string) => Promise<void>;
   newProject: () => void;
   clearTimeline: () => void;
   undo: () => void;
@@ -184,9 +199,56 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
 
+  // Projects Management state
+  const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
+  const [localProjects, setLocalProjects] = useState<SavedProjectMeta[]>([]);
+  const [driveProjects, setDriveProjects] = useState<Array<{ id: string; name: string; modifiedTime: string; size?: string; webViewLink?: string }>>([]);
+  const [isDriveProjectsLoading, setIsDriveProjectsLoading] = useState(false);
+
+  // Synchronize a project into the local projects index and individual slot
+  const syncProjectToLocalIndex = useCallback((proj: Project) => {
+    try {
+      localStorage.setItem(`alo_project_${proj.id}`, JSON.stringify(proj));
+      const indexRaw = localStorage.getItem('alo_editor_projects_index');
+      let index: SavedProjectMeta[] = [];
+      if (indexRaw) {
+        try {
+          index = JSON.parse(indexRaw);
+        } catch {}
+      }
+      const existingIdx = index.findIndex((p) => p.id === proj.id);
+      const meta: SavedProjectMeta = {
+        id: proj.id,
+        name: proj.name,
+        updatedAt: proj.updatedAt || new Date().toISOString(),
+        clipsCount: proj.clips.length,
+        duration: proj.duration,
+        aspectRatio: proj.settings.aspectRatio,
+        driveFileId: proj.driveFileId,
+      };
+      if (existingIdx >= 0) {
+        index[existingIdx] = meta;
+      } else {
+        index.unshift(meta);
+      }
+      localStorage.setItem('alo_editor_projects_index', JSON.stringify(index));
+      setLocalProjects(index);
+    } catch (e) {
+      console.warn('Erro ao sincronizar índice local de projetos:', e);
+    }
+  }, []);
+
   // Restore project from localStorage on initial mount
   useEffect(() => {
     try {
+      // Load local projects index
+      const indexRaw = localStorage.getItem('alo_editor_projects_index');
+      if (indexRaw) {
+        try {
+          setLocalProjects(JSON.parse(indexRaw));
+        } catch {}
+      }
+
       const saved = localStorage.getItem('alo_editor_project');
       if (saved) {
         const parsed: Project = JSON.parse(saved);
@@ -200,7 +262,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } else {
             setSelectedClipIds([]);
           }
+          syncProjectToLocalIndex(parsed);
         }
+      } else {
+        syncProjectToLocalIndex(INITIAL_PROJECT);
       }
       const savedTime = localStorage.getItem('alo_editor_last_saved');
       if (savedTime) setLastSavedAt(savedTime);
@@ -209,9 +274,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } finally {
       setIsHydrated(true);
     }
-  }, []);
+  }, [syncProjectToLocalIndex]);
 
-  // Automatically persist project changes to localStorage
+  // Automatically persist project changes to localStorage & index
   useEffect(() => {
     if (!isHydrated) return;
     try {
@@ -219,10 +284,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       setLastSavedAt(nowStr);
       localStorage.setItem('alo_editor_last_saved', nowStr);
+      syncProjectToLocalIndex(project);
     } catch (e) {
       console.warn('Erro ao auto-salvar projeto no localStorage:', e);
     }
-  }, [project, isHydrated]);
+  }, [project, isHydrated, syncProjectToLocalIndex]);
 
   // Google Drive Cached Videos (persisted in memory + sessionStorage)
   const [driveVideos, setDriveVideos] = useState<GoogleDriveFile[]>([]);
@@ -1095,6 +1161,159 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [googleAccessToken, project]);
 
+  // Load an existing Project (switches current workspace seamlessly)
+  const loadProject = useCallback((newProj: Project) => {
+    setProject(newProj);
+    setHistory([newProj]);
+    setHistoryIndex(0);
+    projectRef.current = newProj;
+    setCurrentTimeState(0);
+    if (newProj.clips.length > 0) {
+      setSelectedClipIds([newProj.clips[0].id]);
+    } else {
+      setSelectedClipIds([]);
+    }
+    syncProjectToLocalIndex(newProj);
+    try {
+      localStorage.setItem('alo_editor_project', JSON.stringify(newProj));
+      const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      setLastSavedAt(nowStr);
+      localStorage.setItem('alo_editor_last_saved', nowStr);
+    } catch {}
+    setIsProjectsModalOpen(false);
+  }, [syncProjectToLocalIndex]);
+
+  // Delete a local project from index and storage
+  const deleteLocalProject = useCallback((id: string) => {
+    try {
+      localStorage.removeItem(`alo_project_${id}`);
+      const indexRaw = localStorage.getItem('alo_editor_projects_index');
+      if (indexRaw) {
+        const index: SavedProjectMeta[] = JSON.parse(indexRaw);
+        const filtered = index.filter((p) => p.id !== id);
+        localStorage.setItem('alo_editor_projects_index', JSON.stringify(filtered));
+        setLocalProjects(filtered);
+      }
+    } catch (e) {
+      console.error('Erro ao deletar projeto local:', e);
+    }
+  }, []);
+
+  // Duplicate an existing project
+  const duplicateLocalProject = useCallback((id: string) => {
+    try {
+      let targetProj: Project | null = null;
+      if (id === project.id) {
+        targetProj = project;
+      } else {
+        const raw = localStorage.getItem(`alo_project_${id}`);
+        if (raw) targetProj = JSON.parse(raw);
+      }
+      if (!targetProj) return;
+
+      const newId = `project_${Date.now()}`;
+      const duplicated: Project = {
+        ...targetProj,
+        id: newId,
+        name: `${targetProj.name} (Cópia)`,
+        driveFileId: undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(`alo_project_${newId}`, JSON.stringify(duplicated));
+      syncProjectToLocalIndex(duplicated);
+    } catch (e) {
+      console.error('Erro ao duplicar projeto:', e);
+    }
+  }, [project, syncProjectToLocalIndex]);
+
+  // Export current project as .alo.json
+  const exportProjectAsJson = useCallback(() => {
+    try {
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(project, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', dataStr);
+      downloadAnchor.setAttribute('download', `${project.name.replace(/[/\\?%*:|"<>]/g, '_')}.alo.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    } catch (e) {
+      console.error('Erro ao exportar arquivo de projeto:', e);
+      alert('Erro ao exportar o arquivo do projeto.');
+    }
+  }, [project]);
+
+  // Import a .alo.json file from user computer
+  const importProjectFromJson = useCallback(async (file: File): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const content = e.target?.result as string;
+          const parsed = JSON.parse(content);
+          if (!parsed || !Array.isArray(parsed.clips) || !Array.isArray(parsed.tracks) || !parsed.settings) {
+            alert('Arquivo inválido. O arquivo selecionado não é um projeto válido do AlôEditor (.alo.json).');
+            resolve(false);
+            return;
+          }
+          const importedProject: Project = {
+            ...parsed,
+            id: parsed.id || `project_${Date.now()}`,
+            name: parsed.name || file.name.replace('.alo.json', '').replace('.json', ''),
+            updatedAt: new Date().toISOString(),
+          };
+          loadProject(importedProject);
+          alert(`Projeto "${importedProject.name}" importado e aberto com sucesso!`);
+          resolve(true);
+        } catch (err: any) {
+          console.error('Erro ao importar arquivo:', err);
+          alert('Erro ao ler o arquivo JSON: ' + (err?.message || 'Arquivo corrompido'));
+          resolve(false);
+        }
+      };
+      reader.readAsText(file);
+    });
+  }, [loadProject]);
+
+  // List all .alo.json projects in Google Drive
+  const loadDriveProjectsList = useCallback(async () => {
+    if (!googleAccessToken) {
+      setIsDrivePickerOpen(true);
+      return;
+    }
+    setIsDriveProjectsLoading(true);
+    try {
+      const files = await listProjectFilesFromDrive(googleAccessToken);
+      setDriveProjects(files);
+    } catch (e: any) {
+      console.error('Erro ao listar projetos do Drive:', e);
+      alert(e?.message || 'Erro ao carregar projetos do Google Drive');
+    } finally {
+      setIsDriveProjectsLoading(false);
+    }
+  }, [googleAccessToken, setIsDrivePickerOpen]);
+
+  // Load project JSON directly from Google Drive
+  const loadProjectFromDrive = useCallback(async (fileId: string) => {
+    if (!googleAccessToken) return;
+    setIsDriveProjectsLoading(true);
+    try {
+      const projData = await loadProjectJsonFromDrive(googleAccessToken, fileId);
+      if (projData && Array.isArray(projData.clips) && Array.isArray(projData.tracks)) {
+        projData.driveFileId = fileId;
+        loadProject(projData);
+        alert(`Projeto "${projData.name}" carregado com sucesso do Google Drive!`);
+      } else {
+        alert('O arquivo selecionado no Google Drive não contém a estrutura de projeto válida.');
+      }
+    } catch (e: any) {
+      console.error('Erro ao carregar projeto do Drive:', e);
+      alert('Falha ao abrir projeto do Drive: ' + (e?.message || 'Erro desconhecido'));
+    } finally {
+      setIsDriveProjectsLoading(false);
+    }
+  }, [googleAccessToken, loadProject]);
+
   const toggleSnapping = useCallback(() => {
     setIsSnappingEnabled((prev) => !prev);
   }, []);
@@ -1217,6 +1436,18 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         newProject,
         clearTimeline,
         saveProjectToDrive,
+        isProjectsModalOpen,
+        setIsProjectsModalOpen,
+        localProjects,
+        loadProject,
+        deleteLocalProject,
+        duplicateLocalProject,
+        exportProjectAsJson,
+        importProjectFromJson,
+        driveProjects,
+        isDriveProjectsLoading,
+        loadDriveProjectsList,
+        loadProjectFromDrive,
         setIsExportModalOpen,
         setIsShortcutsModalOpen,
         setIsDrivePickerOpen,
