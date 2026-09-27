@@ -21,23 +21,48 @@ const AudioTrackPlayer: React.FC<{
 }> = ({ clip, assetUrl, currentTime, isPlaying }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  const lastClipIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!audioRef.current) return;
     const mediaOffset = clip.trimStart + (currentTime - clip.startInTimeline) * clip.speed;
 
     const dynVol = getClipAudioVolume(clip, currentTime);
-    audioRef.current.volume = Math.max(0, Math.min(1, dynVol));
-    audioRef.current.muted = clip.isMuted || dynVol === 0;
-    audioRef.current.playbackRate = clip.speed || 1.0;
+    const targetVol = Math.max(0, Math.min(1, dynVol));
+    const shouldMute = clip.isMuted || targetVol === 0;
 
-    if (Math.abs(audioRef.current.currentTime - mediaOffset) > 0.25) {
-      audioRef.current.currentTime = mediaOffset;
+    if (audioRef.current.muted !== shouldMute) {
+      audioRef.current.muted = shouldMute;
+    }
+    try {
+      if (Math.abs(audioRef.current.volume - targetVol) > 0.02) {
+        audioRef.current.volume = targetVol;
+      }
+    } catch {}
+
+    const targetRate = clip.speed || 1.0;
+    if (audioRef.current.playbackRate !== targetRate) {
+      audioRef.current.playbackRate = targetRate;
     }
 
-    if (isPlaying && audioRef.current.paused) {
-      audioRef.current.play().catch(() => {});
-    } else if (!isPlaying && !audioRef.current.paused) {
-      audioRef.current.pause();
+    const isClipSwitch = lastClipIdRef.current !== clip.id;
+    lastClipIdRef.current = clip.id;
+
+    if (!isPlaying) {
+      if (isClipSwitch || Math.abs(audioRef.current.currentTime - mediaOffset) > 0.05) {
+        audioRef.current.currentTime = mediaOffset;
+      }
+      if (!audioRef.current.paused) {
+        audioRef.current.pause();
+      }
+    } else {
+      // While playing: only hard seek if switching clip or scrubbed (> 1.2s drift), avoiding audio clicks/stutters
+      if (isClipSwitch || Math.abs(audioRef.current.currentTime - mediaOffset) > 1.2) {
+        audioRef.current.currentTime = mediaOffset;
+      }
+      if (audioRef.current.paused) {
+        audioRef.current.play().catch(() => {});
+      }
     }
   }, [currentTime, isPlaying, clip]);
 
@@ -56,6 +81,23 @@ export const PlayerPreview: React.FC = () => {
   } = useEditor();
 
   const [isBuffering, setIsBuffering] = React.useState(false);
+  const bufferTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleWaiting = () => {
+    if (bufferTimeoutRef.current) clearTimeout(bufferTimeoutRef.current);
+    bufferTimeoutRef.current = setTimeout(() => {
+      setIsBuffering(true);
+    }, 450);
+  };
+
+  const handleCanPlay = () => {
+    if (bufferTimeoutRef.current) {
+      clearTimeout(bufferTimeoutRef.current);
+      bufferTimeoutRef.current = null;
+    }
+    setIsBuffering(false);
+  };
+
   const mainVideoRef = useRef<HTMLVideoElement | null>(null);
   const overlayVideoRef = useRef<HTMLVideoElement | null>(null);
   const mainCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -113,24 +155,46 @@ export const PlayerPreview: React.FC = () => {
   const mainTrans = activeMainClip ? getClipTransitionState(activeMainClip, currentTime) : null;
   const overlayTrans = activeOverlayClip ? getClipTransitionState(activeOverlayClip, currentTime) : null;
 
+  const lastMainClipIdRef = useRef<string | null>(null);
+  const lastOverlayClipIdRef = useRef<string | null>(null);
+
   // Sync main video playback time & state & audio volume
   useEffect(() => {
     if (!mainVideoRef.current || !activeMainClip) return;
 
     const mediaOffset = activeMainClip.trimStart + (currentTime - activeMainClip.startInTimeline) * activeMainClip.speed;
 
-    if (Math.abs(mainVideoRef.current.currentTime - mediaOffset) > 0.25) {
-      mainVideoRef.current.currentTime = mediaOffset;
-    }
-
     const dynVol = getClipAudioVolume(activeMainClip, currentTime);
-    mainVideoRef.current.volume = Math.max(0, Math.min(1, dynVol));
-    mainVideoRef.current.muted = activeMainClip.isMuted || dynVol === 0;
+    const targetVol = Math.max(0, Math.min(1, dynVol));
+    const shouldMute = activeMainClip.isMuted || targetVol === 0;
 
-    if (isPlaying && mainVideoRef.current.paused) {
-      mainVideoRef.current.play().catch(() => {});
-    } else if (!isPlaying && !mainVideoRef.current.paused) {
-      mainVideoRef.current.pause();
+    if (mainVideoRef.current.muted !== shouldMute) {
+      mainVideoRef.current.muted = shouldMute;
+    }
+    try {
+      if (Math.abs(mainVideoRef.current.volume - targetVol) > 0.02) {
+        mainVideoRef.current.volume = targetVol;
+      }
+    } catch {}
+
+    const isClipSwitch = lastMainClipIdRef.current !== activeMainClip.id;
+    lastMainClipIdRef.current = activeMainClip.id;
+
+    if (!isPlaying) {
+      if (isClipSwitch || Math.abs(mainVideoRef.current.currentTime - mediaOffset) > 0.05) {
+        mainVideoRef.current.currentTime = mediaOffset;
+      }
+      if (!mainVideoRef.current.paused) {
+        mainVideoRef.current.pause();
+      }
+    } else {
+      // While playing: only hard seek on clip switch or significant user scrub (> 1.2s), preventing mobile decoder stalls
+      if (isClipSwitch || Math.abs(mainVideoRef.current.currentTime - mediaOffset) > 1.2) {
+        mainVideoRef.current.currentTime = mediaOffset;
+      }
+      if (mainVideoRef.current.paused) {
+        mainVideoRef.current.play().catch(() => {});
+      }
     }
   }, [currentTime, isPlaying, activeMainClip]);
 
@@ -140,18 +204,37 @@ export const PlayerPreview: React.FC = () => {
 
     const mediaOffset = activeOverlayClip.trimStart + (currentTime - activeOverlayClip.startInTimeline) * activeOverlayClip.speed;
 
-    if (Math.abs(overlayVideoRef.current.currentTime - mediaOffset) > 0.25) {
-      overlayVideoRef.current.currentTime = mediaOffset;
-    }
-
     const dynVol = getClipAudioVolume(activeOverlayClip, currentTime);
-    overlayVideoRef.current.volume = Math.max(0, Math.min(1, dynVol));
-    overlayVideoRef.current.muted = activeOverlayClip.isMuted || dynVol === 0;
+    const targetVol = Math.max(0, Math.min(1, dynVol));
+    const shouldMute = activeOverlayClip.isMuted || targetVol === 0;
 
-    if (isPlaying && overlayVideoRef.current.paused) {
-      overlayVideoRef.current.play().catch(() => {});
-    } else if (!isPlaying && !overlayVideoRef.current.paused) {
-      overlayVideoRef.current.pause();
+    if (overlayVideoRef.current.muted !== shouldMute) {
+      overlayVideoRef.current.muted = shouldMute;
+    }
+    try {
+      if (Math.abs(overlayVideoRef.current.volume - targetVol) > 0.02) {
+        overlayVideoRef.current.volume = targetVol;
+      }
+    } catch {}
+
+    const isClipSwitch = lastOverlayClipIdRef.current !== activeOverlayClip.id;
+    lastOverlayClipIdRef.current = activeOverlayClip.id;
+
+    if (!isPlaying) {
+      if (isClipSwitch || Math.abs(overlayVideoRef.current.currentTime - mediaOffset) > 0.05) {
+        overlayVideoRef.current.currentTime = mediaOffset;
+      }
+      if (!overlayVideoRef.current.paused) {
+        overlayVideoRef.current.pause();
+      }
+    } else {
+      // While playing: only hard seek on clip switch or significant user scrub (> 1.2s), preventing mobile decoder stalls
+      if (isClipSwitch || Math.abs(overlayVideoRef.current.currentTime - mediaOffset) > 1.2) {
+        overlayVideoRef.current.currentTime = mediaOffset;
+      }
+      if (overlayVideoRef.current.paused) {
+        overlayVideoRef.current.play().catch(() => {});
+      }
     }
   }, [currentTime, isPlaying, activeOverlayClip]);
 
@@ -188,7 +271,7 @@ export const PlayerPreview: React.FC = () => {
     return () => {
       if (animId) cancelAnimationFrame(animId);
     };
-  }, [activeOverlayClip, activeOverlayClip?.backgroundRemoval, currentTime, isPlaying]);
+  }, [activeOverlayClip, activeOverlayClip?.backgroundRemoval, isPlaying]);
 
   // Real-time Chroma Key & Background Removal for Main Video/Image
   useEffect(() => {
@@ -223,7 +306,7 @@ export const PlayerPreview: React.FC = () => {
     return () => {
       if (animId) cancelAnimationFrame(animId);
     };
-  }, [activeMainClip, activeMainClip?.backgroundRemoval, currentTime, isPlaying]);
+  }, [activeMainClip, activeMainClip?.backgroundRemoval, isPlaying]);
 
   // Free-form pointer dragging handler for text overlays
   const handleTextPointerDown = (
@@ -346,28 +429,41 @@ export const PlayerPreview: React.FC = () => {
   return (
     <div className={styles.viewportArea}>
       <div ref={frameRef} className={`${styles.aspectFrame} ${frameClass}`}>
-        {/* Main Video Layer */}
+        {/* Main Video or Image Layer */}
         {activeMainClip && mainAsset ? (
           <>
-            <video
-              ref={mainVideoRef}
-              src={mainAsset.url}
-              className={styles.videoLayer}
-              playsInline
-              muted={activeMainClip.isMuted}
-              onLoadStart={() => setIsBuffering(true)}
-              onWaiting={() => setIsBuffering(true)}
-              onLoadedData={() => setIsBuffering(false)}
-              onCanPlay={() => setIsBuffering(false)}
-              onPlaying={() => setIsBuffering(false)}
-              onError={() => setIsBuffering(false)}
-              style={{
-                display: activeMainClip.backgroundRemoval?.enabled ? 'none' : 'block',
-                transform: `translate(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
-                opacity: mainTrans?.opacity ?? 1,
-                filter: mainTrans?.filterString || undefined,
-              }}
-            />
+            {mainAsset.type === 'image' || activeMainClip.type === 'image' ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={mainAsset.url}
+                alt={activeMainClip.name}
+                className={styles.videoLayer}
+                style={{
+                  objectFit: 'contain',
+                  transform: `translate(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
+                  opacity: mainTrans?.opacity ?? 1,
+                  filter: mainTrans?.filterString || undefined,
+                }}
+              />
+            ) : (
+              <video
+                ref={mainVideoRef}
+                src={mainAsset.url}
+                className={styles.videoLayer}
+                playsInline
+                muted={activeMainClip.isMuted}
+                onWaiting={handleWaiting}
+                onCanPlay={handleCanPlay}
+                onPlaying={handleCanPlay}
+                onError={handleCanPlay}
+                style={{
+                  display: activeMainClip.backgroundRemoval?.enabled ? 'none' : 'block',
+                  transform: `translate(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
+                  opacity: mainTrans?.opacity ?? 1,
+                  filter: mainTrans?.filterString || undefined,
+                }}
+              />
+            )}
             {activeMainClip.backgroundRemoval?.enabled && (
               <canvas
                 ref={mainCanvasRef}
@@ -395,29 +491,54 @@ export const PlayerPreview: React.FC = () => {
           </div>
         )}
 
-        {/* Overlay (B-Roll) Video Layer */}
+        {/* Overlay (B-Roll) Video or Image Layer */}
         {activeOverlayClip && overlayAsset && (
           <>
-            <video
-              ref={overlayVideoRef}
-              src={overlayAsset.url}
-              playsInline
-              muted={activeOverlayClip.isMuted}
-              style={{
-                display: activeOverlayClip.backgroundRemoval?.enabled ? 'none' : 'block',
-                position: 'absolute',
-                left: `${activeOverlayClip.transform.position.x + (overlayTrans?.positionX || 0)}%`,
-                top: `${activeOverlayClip.transform.position.y + (overlayTrans?.positionY || 0)}%`,
-                width: `${(overlayTrans?.scale || activeOverlayClip.transform.scale) * 100}%`,
-                transform: `translate(-50%, -50%) rotate(${activeOverlayClip.transform.rotation}deg)`,
-                opacity: overlayTrans?.opacity ?? 1,
-                filter: overlayTrans?.filterString || undefined,
-                borderRadius: '8px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
-                zIndex: 5,
-                pointerEvents: 'none',
-              }}
-            />
+            {overlayAsset.type === 'image' || activeOverlayClip.type === 'image' ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={overlayAsset.url}
+                alt={activeOverlayClip.name}
+                style={{
+                  position: 'absolute',
+                  left: `${activeOverlayClip.transform.position.x + (overlayTrans?.positionX || 0)}%`,
+                  top: `${activeOverlayClip.transform.position.y + (overlayTrans?.positionY || 0)}%`,
+                  width: `${(overlayTrans?.scale || activeOverlayClip.transform.scale) * 100}%`,
+                  transform: `translate(-50%, -50%) rotate(${activeOverlayClip.transform.rotation}deg)`,
+                  opacity: overlayTrans?.opacity ?? 1,
+                  filter: overlayTrans?.filterString || undefined,
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
+                  zIndex: 5,
+                  pointerEvents: 'none',
+                }}
+              />
+            ) : (
+              <video
+                ref={overlayVideoRef}
+                src={overlayAsset.url}
+                playsInline
+                muted={activeOverlayClip.isMuted}
+                onWaiting={handleWaiting}
+                onCanPlay={handleCanPlay}
+                onPlaying={handleCanPlay}
+                onError={handleCanPlay}
+                style={{
+                  display: activeOverlayClip.backgroundRemoval?.enabled ? 'none' : 'block',
+                  position: 'absolute',
+                  left: `${activeOverlayClip.transform.position.x + (overlayTrans?.positionX || 0)}%`,
+                  top: `${activeOverlayClip.transform.position.y + (overlayTrans?.positionY || 0)}%`,
+                  width: `${(overlayTrans?.scale || activeOverlayClip.transform.scale) * 100}%`,
+                  transform: `translate(-50%, -50%) rotate(${activeOverlayClip.transform.rotation}deg)`,
+                  opacity: overlayTrans?.opacity ?? 1,
+                  filter: overlayTrans?.filterString || undefined,
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
+                  zIndex: 5,
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
             {activeOverlayClip.backgroundRemoval?.enabled && (
               <canvas
                 ref={overlayCanvasRef}

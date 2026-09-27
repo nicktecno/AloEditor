@@ -542,7 +542,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     lastTimeRef.current = performance.now();
 
     const loop = (time: number) => {
-      const delta = (time - lastTimeRef.current) / 1000;
+      const rawDelta = (time - lastTimeRef.current) / 1000;
+      // Clamp delta to at most 0.08s (80ms) to avoid large time jumps on mobile frame drops or tab throttling
+      const delta = Math.min(0.08, Math.max(0, rawDelta));
       lastTimeRef.current = time;
 
       setCurrentTimeState((prev) => {

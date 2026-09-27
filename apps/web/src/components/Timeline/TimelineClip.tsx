@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { useEditor } from '@/context/EditorContext';
 import { TimelineClip as ITimelineClip } from '@/types/editor';
-import { Film, Type, Music, VolumeX, Volume2 } from 'lucide-react';
+import { Film, Type, Music, Layers, VolumeX, Volume2 } from 'lucide-react';
 import styles from './Timeline.module.css';
 
 interface TimelineClipProps {
@@ -31,13 +31,15 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
   const dragStartXRef = useRef(0);
   const initialStartsRef = useRef<{ [clipId: string]: number }>({});
 
-  // Theme class by clip type
-  const themeClass =
-    clip.type === 'video'
-      ? styles.clipVideo
-      : clip.type === 'audio'
-      ? styles.clipAudio
-      : styles.clipText;
+  // Theme class by clip type and track
+  const isOverlay = clip.trackId === 'track_video_overlay';
+  const themeClass = isOverlay
+    ? styles.clipOverlay
+    : clip.type === 'video'
+    ? styles.clipVideo
+    : clip.type === 'audio'
+    ? styles.clipAudio
+    : styles.clipText;
 
   // Drag to move along track with Multi-Select & Magnetism
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -287,9 +289,15 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
 
       {/* Clip Content & Icon */}
       <div className={styles.clipBody}>
-        {clip.type === 'video' && <Film size={15} style={{ flexShrink: 0 }} />}
-        {clip.type === 'text' && <Type size={15} style={{ flexShrink: 0 }} />}
-        {clip.type === 'audio' && <Music size={15} style={{ flexShrink: 0 }} />}
+        {isOverlay ? (
+          <Layers size={14} color="#fbbf24" style={{ flexShrink: 0 }} />
+        ) : clip.type === 'video' ? (
+          <Film size={14} style={{ flexShrink: 0 }} />
+        ) : clip.type === 'text' ? (
+          <Type size={14} style={{ flexShrink: 0 }} />
+        ) : (
+          <Music size={14} style={{ flexShrink: 0 }} />
+        )}
 
         {clip.isMuted && (
           <span title="Áudio silenciado" style={{ display: 'inline-flex', alignItems: 'center' }}>

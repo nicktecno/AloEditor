@@ -20,6 +20,9 @@ import {
   Type,
   Film,
   Music,
+  Layers,
+  Maximize2,
+  Minimize2,
   CheckSquare,
   Eraser,
   Sparkles,
@@ -51,6 +54,8 @@ export const Timeline: React.FC = () => {
   } = useEditor();
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const trackHeadersRef = useRef<HTMLDivElement | null>(null);
+  const isSyncingScrollRef = useRef<boolean>(false);
 
   // Dynamic timeline height (default 270px, resizable from 180px to 480px)
   const [timelineHeight, setTimelineHeight] = React.useState<number>(270);
@@ -68,10 +73,42 @@ export const Timeline: React.FC = () => {
         }
       }
       if (isMobile) {
-        setTimelineHeight(210);
+        setTimelineHeight(250);
       }
     } catch {}
   }, []);
+
+  const toggleTimelineHeight = () => {
+    setTimelineHeight((prev) => {
+      const next = prev >= 320 ? 240 : 380;
+      try {
+        localStorage.setItem('alo_timeline_height', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleTracksScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingScrollRef.current) return;
+    if (trackHeadersRef.current) {
+      isSyncingScrollRef.current = true;
+      trackHeadersRef.current.scrollTop = e.currentTarget.scrollTop;
+      requestAnimationFrame(() => {
+        isSyncingScrollRef.current = false;
+      });
+    }
+  };
+
+  const handleHeadersScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingScrollRef.current) return;
+    if (scrollContainerRef.current) {
+      isSyncingScrollRef.current = true;
+      scrollContainerRef.current.scrollTop = e.currentTarget.scrollTop;
+      requestAnimationFrame(() => {
+        isSyncingScrollRef.current = false;
+      });
+    }
+  };
 
   const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -133,7 +170,10 @@ export const Timeline: React.FC = () => {
   };
 
   // Track icons helper
-  const getTrackIcon = (type: string) => {
+  const getTrackIcon = (type: string, trackId?: string) => {
+    if (trackId === 'track_video_overlay') {
+      return <Layers size={16} color="#fbbf24" />;
+    }
     switch (type) {
       case 'text':
         return <Type size={16} color="#f59e0b" />;
@@ -327,12 +367,26 @@ export const Timeline: React.FC = () => {
             <ZoomIn size={16} />
           </button>
         </div>
+
+        {/* Height Expand/Collapse Quick Toggle */}
+        <button
+          className={styles.toolBtn}
+          onClick={toggleTimelineHeight}
+          title={timelineHeight >= 320 ? 'Recolher altura da timeline' : 'Expandir altura da timeline'}
+        >
+          {timelineHeight >= 320 ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          <span>{timelineHeight >= 320 ? 'Recolher' : 'Expandir'}</span>
+        </button>
       </div>
 
       {/* Main Timeline Scrollable Content */}
       <div className={styles.timelineScrollArea}>
         {/* Fixed Track Headers */}
-        <div className={styles.trackHeadersColumn}>
+        <div
+          ref={trackHeadersRef}
+          className={styles.trackHeadersColumn}
+          onScroll={handleHeadersScroll}
+        >
           <div className={styles.rulerHeaderCorner}>
             <span>Trilhas</span>
           </div>
@@ -340,7 +394,7 @@ export const Timeline: React.FC = () => {
           {project.tracks.map((track) => (
             <div key={track.id} className={styles.trackHeaderItem}>
               <div className={styles.trackHeaderInfo} title={track.name}>
-                {getTrackIcon(track.type)}
+                {getTrackIcon(track.type, track.id)}
                 <span>{track.name}</span>
               </div>
 
@@ -369,7 +423,11 @@ export const Timeline: React.FC = () => {
         </div>
 
         {/* Scrollable Tracks Area */}
-        <div ref={scrollContainerRef} className={styles.tracksScrollable}>
+        <div
+          ref={scrollContainerRef}
+          className={styles.tracksScrollable}
+          onScroll={handleTracksScroll}
+        >
           <div
             className={styles.tracksContentContainer}
             style={{ width: `${totalWidth}px` }}

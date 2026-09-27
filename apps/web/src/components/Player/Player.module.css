@@ -129,8 +129,7 @@
 .loadingSpinnerOverlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(3px);
+  background: rgba(10, 10, 15, 0.78);
   display: flex;
   flex-direction: column;
   align-items: center;
