@@ -13,6 +13,11 @@ export const ShortcutsModal: React.FC = () => {
   const shortcuts = [
     { action: 'Reproduzir / Pausar Reprodução', key: 'Espaço' },
     { action: 'Dividir clipe no playhead (Split)', key: 'S' },
+    { action: 'Aumentar Zoom da Timeline', key: '+ ou =' },
+    { action: 'Diminuir Zoom da Timeline', key: '-' },
+    { action: 'Ajustar à Tela (Ver todas as mídias)', key: 'Shift + Z ou \\' },
+    { action: 'Zoom suave no mouse', key: 'Ctrl / Cmd + Roda do Mouse' },
+    { action: 'Selecionar todos os clipes', key: 'Ctrl + A / Cmd + A' },
     { action: 'Excluir clipe selecionado', key: 'Delete / Backspace' },
     { action: 'Desfazer última alteração', key: 'Ctrl + Z / Cmd + Z' },
     { action: 'Refazer alteração', key: 'Ctrl + Y / Cmd + Shift + Z' },

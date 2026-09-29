@@ -104,6 +104,9 @@ interface EditorContextType {
   setSidebarTab: (tab: SidebarTab) => void;
   setInspectorTab: (tab: InspectorTab) => void;
   setZoom: (zoom: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  zoomToFit: () => void;
   toggleSnapping: () => void;
   updateProjectName: (name: string) => void;
   setAspectRatio: (ratio: AspectRatio) => void;
@@ -1859,10 +1862,69 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setIsSnappingEnabled((prev) => !prev);
   }, []);
 
-  // Keyboard shortcuts listener (<kbd>Cmd+A</kbd>, <kbd>Space</kbd>, <kbd>S</kbd>, <kbd>Delete</kbd>, etc.)
+  const zoomIn = useCallback(() => {
+    setZoom((prev) => {
+      let next: number;
+      if (prev < 3) next = prev + 0.5;
+      else if (prev < 10) next = prev + 2;
+      else if (prev < 30) next = prev + 5;
+      else if (prev < 70) next = prev + 10;
+      else next = prev + 15;
+      return Math.min(160, Math.round(next * 10) / 10);
+    });
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setZoom((prev) => {
+      let next: number;
+      if (prev <= 1) next = Math.max(0.5, prev - 0.25);
+      else if (prev <= 3) next = prev - 0.5;
+      else if (prev <= 10) next = prev - 2;
+      else if (prev <= 30) next = prev - 5;
+      else if (prev <= 70) next = prev - 10;
+      else next = prev - 15;
+      return Math.max(0.5, Math.round(next * 10) / 10);
+    });
+  }, []);
+
+  const zoomToFit = useCallback(() => {
+    const el = document.getElementById('alo_timeline_scrollable');
+    const availableWidth = el ? Math.max(300, el.clientWidth - 48) : 800;
+    const maxClipEnd = project.clips.reduce((max, c) => Math.max(max, c.startInTimeline + c.duration), 0);
+    const effectiveDur = Math.max(project.duration, maxClipEnd, 2);
+    const fitZoom = Math.max(0.5, Math.min(140, parseFloat((availableWidth / effectiveDur).toFixed(2))));
+    setZoom(fitZoom);
+    if (el) {
+      el.scrollLeft = 0;
+    }
+  }, [project.clips, project.duration]);
+
+  // Keyboard shortcuts listener (<kbd>Cmd+A</kbd>, <kbd>Space</kbd>, <kbd>S</kbd>, <kbd>Delete</kbd>, <kbd>+</kbd>, <kbd>-</kbd>, etc.)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) {
+        return;
+      }
+
+      // Atalhos de Zoom da Timeline
+      // Zoom In: +, =, ou NumpadAdd
+      if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
+        e.preventDefault();
+        zoomIn();
+        return;
+      }
+
+      // Zoom Out: -, _, ou NumpadSubtract
+      if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') {
+        e.preventDefault();
+        zoomOut();
+        return;
+      }
+
+      // Ajustar à tela (Fit to Timeline / Ver todo o projeto): Shift + Z ou Backslash (\)
+      if ((!e.ctrlKey && !e.metaKey && e.shiftKey && (e.code === 'KeyZ' || e.key === 'Z')) || e.key === '\\') {
+        e.preventDefault();
+        zoomToFit();
         return;
       }
 
@@ -1900,7 +1962,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, splitClipAtPlayhead, deleteSelectedClips, selectedClipId, selectAllClips, undo, redo, duplicateClip]);
+  }, [togglePlay, splitClipAtPlayhead, deleteSelectedClips, selectedClipId, selectAllClips, undo, redo, duplicateClip, zoomIn, zoomOut, zoomToFit]);
 
   return (
     <EditorContext.Provider
@@ -1922,6 +1984,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         mobileView,
         setMobileView,
         zoom,
+        zoomIn,
+        zoomOut,
+        zoomToFit,
         isSnappingEnabled,
         snapGuideTime,
         setSnapGuideTime,

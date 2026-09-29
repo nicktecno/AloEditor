@@ -21,6 +21,7 @@ import {
   Film,
   Music,
   Layers,
+  Maximize,
   Maximize2,
   Minimize2,
   CheckSquare,
@@ -40,6 +41,9 @@ export const Timeline: React.FC = () => {
     setCurrentTime,
     zoom,
     setZoom,
+    zoomIn,
+    zoomOut,
+    zoomToFit,
     selectedClipId,
     selectedClipIds,
     selectedClip,
@@ -162,7 +166,43 @@ export const Timeline: React.FC = () => {
     window.addEventListener('pointerup', onPointerUp);
   };
 
-  const totalWidth = Math.max(project.duration * zoom, 1400);
+  const [containerWidth, setContainerWidth] = React.useState<number>(1000);
+
+  React.useEffect(() => {
+    const updateWidth = () => {
+      if (scrollContainerRef.current) {
+        setContainerWidth(scrollContainerRef.current.clientWidth);
+      }
+    };
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, []);
+
+  // Atalho do mouse: Ctrl / Cmd + Scroll da roda do mouse para dar zoom in / out
+  React.useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        if (e.deltaY < 0) {
+          zoomIn();
+        } else if (e.deltaY > 0) {
+          zoomOut();
+        }
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [zoomIn, zoomOut]);
+
+  // Calcula a duração total real considerando o fim de todos os clipes presentes no projeto
+  const maxClipEnd = project.clips.reduce((max, c) => Math.max(max, c.startInTimeline + c.duration), 0);
+  const effectiveDuration = Math.max(project.duration, maxClipEnd, 1);
+  const totalWidth = Math.max(effectiveDuration * zoom, containerWidth || 800);
   const playheadLeft = currentTime * zoom;
   const snapGuideLeft = snapGuideTime !== null ? snapGuideTime * zoom : null;
 
@@ -502,28 +542,38 @@ export const Timeline: React.FC = () => {
         <div className={styles.zoomGroup}>
           <button
             className={styles.toolBtn}
-            onClick={() => setZoom(Math.max(20, zoom - 15))}
-            title="Diminuir Zoom"
+            onClick={zoomOut}
+            title="Diminuir Zoom (Atalho: -)"
           >
             <ZoomOut size={16} />
           </button>
 
           <input
             type="range"
-            min="20"
-            max="140"
+            min="0.5"
+            max="150"
+            step="0.5"
             value={zoom}
             className={styles.zoomSlider}
-            onChange={(e) => setZoom(parseInt(e.target.value))}
-            title="Zoom da Linha do Tempo"
+            onChange={(e) => setZoom(parseFloat(e.target.value))}
+            title="Zoom da Linha do Tempo (Atalhos: + e -)"
           />
 
           <button
             className={styles.toolBtn}
-            onClick={() => setZoom(Math.min(140, zoom + 15))}
-            title="Aumentar Zoom"
+            onClick={zoomIn}
+            title="Aumentar Zoom (Atalho: + ou =)"
           >
             <ZoomIn size={16} />
+          </button>
+
+          <button
+            className={styles.toolBtn}
+            onClick={zoomToFit}
+            title="Ajustar à Tela: Ver todas as mídias do projeto (Atalho: Shift + Z)"
+          >
+            <Maximize size={15} />
+            <span>Ver Tudo</span>
           </button>
         </div>
 
@@ -586,6 +636,7 @@ export const Timeline: React.FC = () => {
 
         {/* Scrollable Tracks Area */}
         <div
+          id="alo_timeline_scrollable"
           ref={scrollContainerRef}
           className={styles.tracksScrollable}
           onScroll={handleTracksScroll}
@@ -602,7 +653,7 @@ export const Timeline: React.FC = () => {
             onDrop={(e) => handleTrackDrop(e, 'track_video_main')}
           >
             {/* Top Ruler Bar */}
-            <TimelineRuler totalDuration={project.duration} />
+            <TimelineRuler totalDuration={effectiveDuration} totalWidth={totalWidth} />
 
             {/* Magnetic Snapping Visual Guide Line */}
             {snapGuideLeft !== null && (

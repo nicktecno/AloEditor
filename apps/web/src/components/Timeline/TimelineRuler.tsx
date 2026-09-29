@@ -6,19 +6,38 @@ import styles from './Timeline.module.css';
 
 interface TimelineRulerProps {
   totalDuration: number;
+  totalWidth?: number;
 }
 
-export const TimelineRuler: React.FC<TimelineRulerProps> = ({ totalDuration }) => {
+export const TimelineRuler: React.FC<TimelineRulerProps> = ({ totalDuration, totalWidth }) => {
   const { zoom, setCurrentTime } = useEditor();
   const rulerRef = useRef<HTMLDivElement | null>(null);
 
-  const totalWidth = Math.max(totalDuration * zoom, 1200);
+  const computedWidth = totalWidth ?? Math.max(totalDuration * zoom, 100);
+
+  // Intervalos adaptativos com base no zoom para nunca encavalar os números da régua
+  let secondInterval = 1;
+  if (zoom < 0.8) {
+    secondInterval = 120; // 2 minutos
+  } else if (zoom < 1.5) {
+    secondInterval = 60; // 1 minuto
+  } else if (zoom < 3) {
+    secondInterval = 30; // 30 segundos
+  } else if (zoom < 6) {
+    secondInterval = 15; // 15 segundos
+  } else if (zoom < 15) {
+    secondInterval = 10; // 10 segundos
+  } else if (zoom < 35) {
+    secondInterval = 5; // 5 segundos
+  } else if (zoom < 75) {
+    secondInterval = 2; // 2 segundos
+  } else {
+    secondInterval = 1; // 1 segundo
+  }
 
   // Generate tick marks
   const ticks = [];
-  const secondInterval = zoom < 40 ? 5 : zoom < 80 ? 2 : 1;
-
-  for (let s = 0; s <= totalDuration + 2; s += secondInterval) {
+  for (let s = 0; s <= totalDuration + secondInterval; s += secondInterval) {
     const mins = Math.floor(s / 60);
     const secs = s % 60;
     const label = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
@@ -75,7 +94,7 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({ totalDuration }) =
     <div
       ref={rulerRef}
       className={styles.rulerTrack}
-      style={{ width: `${totalWidth}px` }}
+      style={{ width: `${computedWidth}px` }}
       onPointerDown={handlePointerDown}
     >
       {ticks.map((tick) => (

@@ -26,7 +26,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
   const asset = project.assets.find((a) => a.id === clip.assetId);
   const isSelected = selectedClipIds.includes(clip.id);
   const leftPos = clip.startInTimeline * zoom;
-  const widthPos = Math.max(clip.duration * zoom, 36);
+  const widthPos = Math.max(clip.duration * zoom, 4);
 
   const [isDragging, setIsDragging] = useState(false);
   const isDraggingRef = useRef(false);
@@ -266,13 +266,15 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
       {clip.type === 'audio' && <div className={styles.clipAudioWaveform} />}
 
       {/* Left Trim Handle */}
-      <div
-        className={styles.trimHandleLeft}
-        onPointerDown={handleTrimLeft}
-        title="Arrastar para aparar início"
-      >
-        <div className={styles.handleGrip} />
-      </div>
+      {widthPos >= 20 && (
+        <div
+          className={styles.trimHandleLeft}
+          onPointerDown={handleTrimLeft}
+          title="Arrastar para aparar início"
+        >
+          <div className={styles.handleGrip} />
+        </div>
+      )}
 
       {/* Visual Transition IN Overlay Shade */}
       {clip.transitionIn && clip.transitionIn.type !== 'none' && clip.transitionIn.duration > 0 && (
@@ -319,7 +321,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
         )}
 
         {/* Transition In Badge */}
-        {clip.transitionIn && clip.transitionIn.type !== 'none' && (
+        {widthPos >= 50 && clip.transitionIn && clip.transitionIn.type !== 'none' && (
           <span
             className={styles.clipTransitionBadge}
             title={clip.type === 'audio' ? `Fade In de áudio: ${clip.transitionIn.duration}s` : `Transição de entrada: ${clip.transitionIn.type} (${clip.transitionIn.duration}s)`}
@@ -328,12 +330,14 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
           </span>
         )}
 
-        <span className={styles.clipName} title={clip.name}>
-          {clip.name}
-        </span>
+        {widthPos >= 40 && (
+          <span className={styles.clipName} title={clip.name}>
+            {clip.name}
+          </span>
+        )}
 
         {/* Effect FX Badge */}
-        {clip.effect && clip.effect !== 'none' && (
+        {widthPos >= 50 && clip.effect && clip.effect !== 'none' && (
           <span
             className={styles.clipFxBadge}
             title={`Efeito ativo: ${clip.effect}`}
@@ -343,7 +347,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
         )}
 
         {/* Transition Out Badge */}
-        {clip.transitionOut && clip.transitionOut.type !== 'none' && (
+        {widthPos >= 50 && clip.transitionOut && clip.transitionOut.type !== 'none' && (
           <span
             className={styles.clipTransitionBadge}
             title={`Transição de saída: ${clip.transitionOut.type} (${clip.transitionOut.duration}s)`}
@@ -352,17 +356,19 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
           </span>
         )}
 
-        <span className={styles.clipDuration}>{clip.duration.toFixed(1)}s</span>
+        {widthPos >= 30 && <span className={styles.clipDuration}>{clip.duration.toFixed(1)}s</span>}
       </div>
 
       {/* Right Trim Handle */}
-      <div
-        className={styles.trimHandleRight}
-        onPointerDown={handleTrimRight}
-        title="Arrastar para aparar fim"
-      >
-        <div className={styles.handleGrip} />
-      </div>
+      {widthPos >= 20 && (
+        <div
+          className={styles.trimHandleRight}
+          onPointerDown={handleTrimRight}
+          title="Arrastar para aparar fim"
+        >
+          <div className={styles.handleGrip} />
+        </div>
+      )}
     </div>
   );
 };
