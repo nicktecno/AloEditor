@@ -209,7 +209,6 @@ export const Header: React.FC = () => {
           <Cloud size={15} color={isDriveConnected ? '#10b981' : '#06b6d4'} />
           <span className={styles.driveBtnText}>{isDriveConnected ? (driveUser?.name?.split(' ')[0] || 'Drive') : 'Drive'}</span>
           {driveUser?.avatarUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={driveUser.avatarUrl}
               alt={driveUser.name}

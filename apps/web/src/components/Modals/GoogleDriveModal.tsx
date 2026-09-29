@@ -172,7 +172,6 @@ export const GoogleDriveModal: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-panel)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       {driveUser.avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={driveUser.avatarUrl}
                           alt={driveUser.name}
@@ -236,7 +235,6 @@ export const GoogleDriveModal: React.FC = () => {
                           onClick={() => handleSelectVideo(video)}
                           title="Clique para adicionar à linha do tempo"
                         >
-                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={video.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
                             alt={video.name}

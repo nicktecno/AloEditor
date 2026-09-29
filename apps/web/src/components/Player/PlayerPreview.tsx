@@ -529,7 +529,6 @@ export const PlayerPreview: React.FC = () => {
                 filter: mainTrans?.filterString || undefined,
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={mainAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
                 alt={activeMainClip.name}
@@ -542,7 +541,6 @@ export const PlayerPreview: React.FC = () => {
             </div>
 
             {mainAsset.type === 'image' || activeMainClip.type === 'image' ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={mainAsset.url}
                 alt={activeMainClip.name}
@@ -621,7 +619,6 @@ export const PlayerPreview: React.FC = () => {
         {activeOverlayClip && overlayAsset && (
           <>
             {overlayAsset.type === 'image' || activeOverlayClip.type === 'image' ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={overlayAsset.url}
                 alt={activeOverlayClip.name}
