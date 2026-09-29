@@ -226,11 +226,41 @@
 }
 
 /* Asset Grid */
+.filterPillsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .filterPills {
   display: flex;
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 4px;
+}
+
+.clearAssetsBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(244, 63, 94, 0.08);
+  border: 1px solid rgba(244, 63, 94, 0.25);
+  color: #fb7185;
+  cursor: pointer;
+  transition: all var(--ease-fast);
+  white-space: nowrap;
+}
+
+.clearAssetsBtn:hover {
+  background: rgba(244, 63, 94, 0.2);
+  border-color: rgba(244, 63, 94, 0.5);
+  color: #fff;
 }
 
 .filterPill {
@@ -389,6 +419,29 @@
   box-shadow: 0 0 6px rgba(4, 211, 97, 0.95);
 }
 
+.cardActionBtns {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity var(--ease-fast), transform var(--ease-fast);
+  pointer-events: none;
+}
+
+.assetCard:hover .cardActionBtns {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .cardActionBtns {
+    opacity: 1;
+  }
+}
+
 .addOverlayBtn {
   position: absolute;
   top: 6px;
@@ -401,6 +454,32 @@
 
 .assetCard:hover .addOverlayBtn {
   opacity: 1;
+}
+
+.deleteBtnCircle {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(244, 63, 94, 0.4);
+  color: #f43f5e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  transform: scale(0.9);
+  transition: all var(--ease-fast);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.deleteBtnCircle:hover {
+  background: #f43f5e;
+  color: #fff;
+  border-color: transparent;
+  transform: scale(1.12);
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.8);
 }
 
 .addBtnCircle {

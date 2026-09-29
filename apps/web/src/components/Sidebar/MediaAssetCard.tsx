@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Volume2, Cloud, Plus } from 'lucide-react';
+import { Volume2, Cloud, Plus, Trash2 } from 'lucide-react';
 import { MediaAsset } from '@/types/editor';
 import { GENERIC_VIDEO_THUMBNAIL, handleThumbnailError } from '@/utils/thumbnailGenerator';
 import styles from './Sidebar.module.css';
@@ -9,6 +9,7 @@ import styles from './Sidebar.module.css';
 interface MediaAssetCardProps {
   asset: MediaAsset;
   onAdd: (asset: MediaAsset) => void;
+  onDelete?: (asset: MediaAsset) => void;
   title?: string;
 }
 
@@ -20,7 +21,7 @@ const formatDisplayTime = (sec: number) => {
   return `${mins}:${secs < 10 ? '0' : ''}${secs}.${tenths}`;
 };
 
-export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, title }) => {
+export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, onDelete, title }) => {
   const isVideo = asset.type === 'video';
   const [isHovered, setIsHovered] = useState(false);
   const [scrubRatio, setScrubRatio] = useState<number | null>(null);
@@ -216,9 +217,23 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, ti
             : `${duration.toFixed(1)}s`}
         </div>
 
-        {/* Quick Add (+) Button */}
-        <div className={styles.addOverlayBtn}>
-          <div
+        {/* Quick Action Buttons (Add + & Delete Trash) */}
+        <div className={styles.cardActionBtns}>
+          {onDelete && (
+            <button
+              type="button"
+              className={styles.deleteBtnCircle}
+              title={`Apagar "${asset.name}" da biblioteca`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(asset);
+              }}
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+          <button
+            type="button"
             className={styles.addBtnCircle}
             title="Adicionar à Linha do Tempo"
             onClick={(e) => {
@@ -227,7 +242,7 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, ti
             }}
           >
             <Plus size={16} />
-          </div>
+          </button>
         </div>
       </div>
 

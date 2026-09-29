@@ -110,6 +110,7 @@ interface EditorContextType {
   duplicateClip: (clipId: string) => void;
   detachAudioFromClip: (clipId: string) => void;
   addAsset: (asset: MediaAsset) => void;
+  removeAsset: (assetId: string, deleteAssociatedClips?: boolean) => void;
   updateAssetThumbnail: (assetId: string, thumbnailUrl: string) => void;
   syncMediaDuration: (assetId: string, realDuration: number) => void;
   saveProjectToDrive: () => Promise<void>;
@@ -970,21 +971,55 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setSelectedClipIds([newClip.id]);
   }, [project.clips, updateProjectWithHistory]);
 
-  // Detach audio from a video clip into an independent audio track
+  // Detach audio from a video clip into an independent audio track directly beneath the media
   const detachAudioFromClip = useCallback((clipId: string) => {
     const clip = project.clips.find((c) => c.id === clipId);
     if (!clip || clip.type !== 'video') return;
 
-    // Check if audio track exists or default to track_audio_bg
-    const audioTrack = project.tracks.find((t) => t.type === 'audio');
-    const audioTrackId = audioTrack ? audioTrack.id : 'track_audio_bg';
+    const clipTrackIndex = project.tracks.findIndex((t) => t.id === clip.trackId);
+    const targetIndex = clipTrackIndex !== -1 ? clipTrackIndex + 1 : project.tracks.length;
+
+    // Check if the track immediately below is already an audio track and has no collision in this time range
+    const nextTrack = project.tracks[targetIndex];
+    let targetAudioTrackId: string;
+    let updatedTracks = [...project.tracks];
+
+    const isCollision = (trackId: string) => {
+      return project.clips.some(
+        (c) =>
+          c.trackId === trackId &&
+          Math.max(c.startInTimeline, clip.startInTimeline) <
+            Math.min(c.startInTimeline + c.duration, clip.startInTimeline + clip.duration) - 0.05
+      );
+    };
+
+    if (nextTrack && nextTrack.type === 'audio' && !isCollision(nextTrack.id)) {
+      targetAudioTrackId = nextTrack.id;
+    } else {
+      // Create a dedicated audio track placed directly beneath this media's track
+      targetAudioTrackId = `track_audio_${Date.now()}`;
+      const cleanClipName = clip.name.replace(/\.[^/.]+$/, '').slice(0, 18);
+      const newTrack: TimelineTrack = {
+        id: targetAudioTrackId,
+        name: `Áudio — ${cleanClipName}`,
+        type: 'audio',
+        isMuted: false,
+        isLocked: false,
+        isHidden: false,
+        order: targetIndex,
+      };
+
+      // Insert directly below the video track
+      updatedTracks.splice(targetIndex, 0, newTrack);
+      updatedTracks = updatedTracks.map((t, idx) => ({ ...t, order: idx }));
+    }
 
     const newAudioClipId = `clip_audio_detached_${Date.now()}`;
     const newAudioClip: TimelineClip = {
       id: newAudioClipId,
-      trackId: audioTrackId,
+      trackId: targetAudioTrackId,
       assetId: clip.assetId,
-      name: `🔊 [Áudio] ${clip.name}`,
+      name: `🔊 ${clip.name}`,
       type: 'audio',
       startInTimeline: clip.startInTimeline,
       duration: clip.duration,
@@ -1013,6 +1048,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       return {
         ...prev,
+        tracks: updatedTracks,
         clips: [...updatedClips, newAudioClip],
       };
     });
@@ -1210,6 +1246,15 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }));
   }, [updateProjectWithHistory]);
 
+  // Remove asset from project library (optionally removing associated clips)
+  const removeAsset = useCallback((assetId: string, deleteAssociatedClips = false) => {
+    updateProjectWithHistory((prev) => ({
+      ...prev,
+      assets: prev.assets.filter((a) => a.id !== assetId),
+      clips: deleteAssociatedClips ? prev.clips.filter((c) => c.assetId !== assetId) : prev.clips,
+    }));
+  }, [updateProjectWithHistory]);
+
   // Update asset thumbnail (e.g. when generated asynchronously from video frame)
   const updateAssetThumbnail = useCallback((assetId: string, thumbnailUrl: string) => {
     setProject((prev) => ({
@@ -1285,8 +1330,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       tracks: [
         { id: 'track_text', name: 'Texto & Títulos', type: 'text', isMuted: false, isLocked: false, isHidden: false, order: 0 },
         { id: 'track_video_main', name: 'Vídeo Principal', type: 'video', isMuted: false, isLocked: false, isHidden: false, order: 1 },
-        { id: 'track_video_overlay', name: 'Sobreposição (B-Roll)', type: 'video', isMuted: false, isLocked: false, isHidden: false, order: 2 },
-        { id: 'track_audio_bg', name: 'Trilha Sonora', type: 'audio', isMuted: false, isLocked: false, isHidden: false, order: 3 },
+        { id: 'track_audio_main', name: 'Áudio do Vídeo', type: 'audio', isMuted: false, isLocked: false, isHidden: false, order: 2 },
+        { id: 'track_video_overlay', name: 'Sobreposição (B-Roll)', type: 'video', isMuted: false, isLocked: false, isHidden: false, order: 3 },
+        { id: 'track_audio_bg', name: 'Trilha Sonora', type: 'audio', isMuted: false, isLocked: false, isHidden: false, order: 4 },
       ],
       clips: [],
       assets: [],
@@ -1617,6 +1663,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         duplicateClip,
         detachAudioFromClip,
         addAsset,
+        removeAsset,
         updateAssetThumbnail,
         syncMediaDuration,
         newProject,

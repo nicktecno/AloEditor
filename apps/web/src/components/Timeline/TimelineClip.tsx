@@ -255,13 +255,16 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
 
   return (
     <div
-      className={`${styles.clipItem} ${themeClass} ${isSelected ? styles.clipItemSelected : ''} ${isDragging ? styles.clipDragging : ''}`}
+      className={`${styles.clipItem} ${themeClass} ${clip.type === 'audio' ? styles.clipItemAudio : ''} ${isSelected ? styles.clipItemSelected : ''} ${isDragging ? styles.clipDragging : ''}`}
       style={{
         left: `${leftPos}px`,
         width: `${widthPos}px`,
       }}
       onPointerDown={handlePointerDown}
     >
+      {/* Subtle waveform graphic for audio clips */}
+      {clip.type === 'audio' && <div className={styles.clipAudioWaveform} />}
+
       {/* Left Trim Handle */}
       <div
         className={styles.trimHandleLeft}

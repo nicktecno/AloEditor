@@ -44,6 +44,7 @@ export const MediaPanel: React.FC = () => {
     addClipToTrack,
     addTextClip,
     addAsset,
+    removeAsset,
     updateAssetThumbnail,
     syncMediaDuration,
     setIsDrivePickerOpen,
@@ -96,6 +97,39 @@ export const MediaPanel: React.FC = () => {
   const showFeedback = (msg: string) => {
     setFeedbackMsg(msg);
     setTimeout(() => setFeedbackMsg(null), 3500);
+  };
+
+  const handleDeleteAsset = (asset: MediaAsset) => {
+    const isUsedInTimeline = project.clips.some((c) => c.assetId === asset.id);
+    if (isUsedInTimeline) {
+      const confirmRemove = confirm(
+        `A mídia "${asset.name}" está em uso na linha do tempo.\n\nDeseja apagá-la da biblioteca e remover também seus clipes da timeline?`
+      );
+      if (!confirmRemove) return;
+      removeAsset(asset.id, true);
+      showFeedback(`Mídia "${asset.name}" e clipes correspondentes foram removidos.`);
+    } else {
+      const confirmRemove = confirm(`Deseja apagar a mídia "${asset.name}" da biblioteca?`);
+      if (!confirmRemove) return;
+      removeAsset(asset.id, false);
+      showFeedback(`Mídia "${asset.name}" removida da biblioteca.`);
+    }
+  };
+
+  const handleClearUnusedAssets = () => {
+    const unusedAssets = project.assets.filter(
+      (a) => !project.clips.some((c) => c.assetId === a.id)
+    );
+    if (unusedAssets.length === 0) {
+      showFeedback('Todas as mídias importadas estão em uso na linha do tempo.');
+      return;
+    }
+    const confirmClear = confirm(
+      `Deseja apagar ${unusedAssets.length} mídia(s) não utilizada(s) na linha do tempo?`
+    );
+    if (!confirmClear) return;
+    unusedAssets.forEach((a) => removeAsset(a.id, false));
+    showFeedback(`${unusedAssets.length} mídia(s) não utilizada(s) removida(s).`);
   };
 
   // Find target clip: selected clip first, or clip currently under playhead, or first video/text clip
@@ -418,32 +452,46 @@ export const MediaPanel: React.FC = () => {
               <span className={styles.dropzoneSub}>MP4, MOV, WebM, MP3, WAV</span>
             </div>
 
-            {/* Filter Pills */}
-            <div className={styles.filterPills}>
-              <button
-                className={`${styles.filterPill} ${activeFilter === 'all' ? styles.filterPillActive : ''}`}
-                onClick={() => setActiveFilter('all')}
-              >
-                Todos ({project.assets.length})
-              </button>
-              <button
-                className={`${styles.filterPill} ${activeFilter === 'drive' ? styles.filterPillActive : ''}`}
-                onClick={() => setActiveFilter('drive')}
-              >
-                Google Drive ({driveCount})
-              </button>
-              <button
-                className={`${styles.filterPill} ${activeFilter === 'video' ? styles.filterPillActive : ''}`}
-                onClick={() => setActiveFilter('video')}
-              >
-                Vídeos
-              </button>
-              <button
-                className={`${styles.filterPill} ${activeFilter === 'audio' ? styles.filterPillActive : ''}`}
-                onClick={() => setActiveFilter('audio')}
-              >
-                Áudios
-              </button>
+            {/* Filter Pills & Actions */}
+            <div className={styles.filterPillsRow}>
+              <div className={styles.filterPills}>
+                <button
+                  className={`${styles.filterPill} ${activeFilter === 'all' ? styles.filterPillActive : ''}`}
+                  onClick={() => setActiveFilter('all')}
+                >
+                  Todos ({project.assets.length})
+                </button>
+                <button
+                  className={`${styles.filterPill} ${activeFilter === 'drive' ? styles.filterPillActive : ''}`}
+                  onClick={() => setActiveFilter('drive')}
+                >
+                  Google Drive ({driveCount})
+                </button>
+                <button
+                  className={`${styles.filterPill} ${activeFilter === 'video' ? styles.filterPillActive : ''}`}
+                  onClick={() => setActiveFilter('video')}
+                >
+                  Vídeos
+                </button>
+                <button
+                  className={`${styles.filterPill} ${activeFilter === 'audio' ? styles.filterPillActive : ''}`}
+                  onClick={() => setActiveFilter('audio')}
+                >
+                  Áudios
+                </button>
+              </div>
+
+              {project.assets.length > 0 && (
+                <button
+                  type="button"
+                  className={styles.clearAssetsBtn}
+                  onClick={handleClearUnusedAssets}
+                  title="Apagar mídias que não estão em uso na linha do tempo"
+                >
+                  <Trash2 size={12} />
+                  <span>Limpar não usadas</span>
+                </button>
+              )}
             </div>
 
             {/* Asset Cards Grid */}
@@ -453,6 +501,7 @@ export const MediaPanel: React.FC = () => {
                   key={asset.id}
                   asset={asset}
                   onAdd={addClipToTrack}
+                  onDelete={handleDeleteAsset}
                 />
               ))}
 

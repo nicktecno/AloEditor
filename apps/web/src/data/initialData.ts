@@ -87,13 +87,22 @@ export const INITIAL_TRACKS: TimelineTrack[] = [
     order: 1,
   },
   {
+    id: 'track_audio_main',
+    name: 'Áudio do Vídeo',
+    type: 'audio',
+    isMuted: false,
+    isLocked: false,
+    isHidden: false,
+    order: 2,
+  },
+  {
     id: 'track_video_overlay',
     name: 'Sobreposição (B-Roll)',
     type: 'video',
     isMuted: false,
     isLocked: false,
     isHidden: false,
-    order: 2,
+    order: 3,
   },
   {
     id: 'track_audio_bg',
@@ -102,7 +111,7 @@ export const INITIAL_TRACKS: TimelineTrack[] = [
     isMuted: false,
     isLocked: false,
     isHidden: false,
-    order: 3,
+    order: 4,
   },
 ];
 

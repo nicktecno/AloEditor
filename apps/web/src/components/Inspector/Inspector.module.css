@@ -1,5 +1,6 @@
 .inspectorContainer {
-  width: clamp(230px, 20vw, 310px);
+  width: clamp(260px, 22vw, 320px);
+  min-width: 250px;
   max-width: 100%;
   height: 100%;
   background-color: var(--bg-panel);
@@ -7,6 +8,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overflow-x: hidden;
+  box-sizing: border-box;
   transition: width 0.2s ease;
 }
 
@@ -70,20 +73,28 @@
 .inspectorContent {
   flex: 1;
   overflow-y: auto;
-  padding: 18px;
+  overflow-x: hidden;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
 }
 
 .sectionGroup {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   background-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 14px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .sectionTitle {
@@ -99,29 +110,93 @@
 
 .propRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 4px 8px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.propRow > :first-child {
+  order: 1;
+}
+
+.propRow > :last-child {
+  order: 2;
+  margin-left: auto;
 }
 
 .propLabel {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
   white-space: nowrap;
+  order: 1;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .propValue {
-  font-size: 12px;
+  font-size: 11px;
   font-family: var(--font-geist-mono);
   font-weight: 600;
   color: var(--text-primary);
-  width: 48px;
   text-align: right;
+  order: 2;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xs);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.propRow > .propSlider,
 .propSlider {
-  flex: 1;
+  order: 3 !important;
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  height: 6px;
+  margin: 3px 0 2px 0;
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--bg-input);
+  border-radius: var(--radius-full);
+  outline: none;
+  border: 1px solid var(--border-default);
+}
+
+.propSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(4, 211, 97, 0.6);
+  transition: transform 0.1s ease;
+}
+
+.propSlider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.propSlider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 6px rgba(4, 211, 97, 0.6);
 }
 
 .textInputArea {
@@ -264,17 +339,22 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 6px;
+  width: 100%;
 }
 
 .quickActionBtn {
+  flex: 1 1 calc(50% - 4px);
+  min-width: 0;
+  text-align: center;
   background: var(--bg-input);
   border: 1px solid var(--border-default);
   color: var(--text-secondary);
-  padding: 5px 8px;
+  padding: 6px 4px;
   border-radius: var(--radius-xs);
   font-size: 11px;
   cursor: pointer;
   transition: all var(--ease-fast);
+  white-space: nowrap;
 }
 
 .quickActionBtn:hover {
@@ -384,7 +464,7 @@
 
 @media (max-width: 1350px) {
   .inspectorContainer {
-    width: clamp(210px, 19vw, 270px);
+    width: clamp(250px, 22vw, 290px);
   }
 
   .inspectorContent {

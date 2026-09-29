@@ -531,7 +531,10 @@ export const Timeline: React.FC = () => {
           </div>
 
           {project.tracks.map((track) => (
-            <div key={track.id} className={styles.trackHeaderItem}>
+            <div
+              key={track.id}
+              className={`${styles.trackHeaderItem} ${track.type === 'audio' ? styles.trackHeaderItemAudio : ''}`}
+            >
               <div className={styles.trackHeaderInfo} title={track.name}>
                 {getTrackIcon(track.type, track.id)}
                 <span>{track.name}</span>
@@ -609,7 +612,7 @@ export const Timeline: React.FC = () => {
               return (
                 <div
                   key={track.id}
-                  className={styles.trackLane}
+                  className={`${styles.trackLane} ${track.type === 'audio' ? styles.trackLaneAudio : ''}`}
                   onDragOver={handleTrackDragOver}
                   onDragLeave={handleTrackDragLeave}
                   onDrop={(e) => handleTrackDrop(e, track.id)}
