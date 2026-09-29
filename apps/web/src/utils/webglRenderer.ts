@@ -349,6 +349,9 @@ export function seekHardwareAccelerated(
   preferFastSeek = true
 ): void {
   if (!video || isNaN(targetTime)) return;
+  // Se o elemento de vídeo ainda não carregou os metadados (readyState < 1), não busca ainda
+  if (video.readyState < 1) return;
+
   const maxDur = isFinite(video.duration) && video.duration > 0 ? video.duration : targetTime;
   const clamped = Math.max(0, Math.min(maxDur, targetTime));
 

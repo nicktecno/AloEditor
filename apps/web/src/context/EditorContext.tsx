@@ -370,7 +370,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
         if (asset.url.startsWith('blob:')) {
           try {
-            const res = await fetch(asset.url, { method: 'HEAD' });
+            // Blob URLs only support GET in browsers; HEAD method throws TypeError and incorrectly marks media offline
+            const res = await fetch(asset.url);
             if (!res.ok) {
               offlineIds.push(asset.id);
             }
@@ -810,6 +811,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     setSelectedClipIds([newClip.id]);
+    setCurrentTimeState(startInTimeline);
+    currentTimeRef.current = startInTimeline;
   }, [currentTime, project.clips, updateProjectWithHistory]);
 
   // Open Real Google Picker
@@ -1304,11 +1307,14 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const addAsset = useCallback((asset: MediaAsset) => {
     const assetWithThumb: MediaAsset = {
       ...asset,
+      isOffline: false,
       thumbnailUrl: asset.thumbnailUrl || (asset.type === 'video' ? GENERIC_VIDEO_THUMBNAIL : undefined),
     };
     updateProjectWithHistory((prev) => ({
       ...prev,
-      assets: prev.assets.some((a) => a.id === assetWithThumb.id) ? prev.assets : [assetWithThumb, ...prev.assets],
+      assets: prev.assets.some((a) => a.id === assetWithThumb.id)
+        ? prev.assets.map((a) => (a.id === assetWithThumb.id ? { ...a, isOffline: false, url: assetWithThumb.url } : a))
+        : [assetWithThumb, ...prev.assets],
     }));
   }, [updateProjectWithHistory]);
 

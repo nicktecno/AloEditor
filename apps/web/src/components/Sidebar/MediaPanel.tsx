@@ -254,6 +254,7 @@ export const MediaPanel: React.FC = () => {
       };
 
       addAsset(newAsset);
+      addClipToTrack(newAsset);
 
       // Asynchronously capture real frame thumbnail from video file
       if (isVideo) {

@@ -124,6 +124,14 @@ export const PlayerPreview: React.FC = () => {
     }
     setIsBuffering(false);
     setIsVideoReady(true);
+    if (isPlaying) {
+      if (mainVideoRef.current && mainVideoRef.current.paused) {
+        mainVideoRef.current.play().catch(() => {});
+      }
+      if (overlayVideoRef.current && overlayVideoRef.current.paused) {
+        overlayVideoRef.current.play().catch(() => {});
+      }
+    }
   };
 
   const mainVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -314,7 +322,12 @@ export const PlayerPreview: React.FC = () => {
         }
       }
       if (mainVideoRef.current.paused) {
-        mainVideoRef.current.play().catch(() => {});
+        mainVideoRef.current.play().catch((err) => {
+          if (mainVideoRef.current && mainVideoRef.current.paused) {
+            mainVideoRef.current.muted = true;
+            mainVideoRef.current.play().catch(() => {});
+          }
+        });
       }
     }
   }, [currentTime, isPlaying, activeMainClip]);
@@ -354,7 +367,12 @@ export const PlayerPreview: React.FC = () => {
         requestOverlayHardwareSeek(mediaOffset, true);
       }
       if (overlayVideoRef.current.paused) {
-        overlayVideoRef.current.play().catch(() => {});
+        overlayVideoRef.current.play().catch((err) => {
+          if (overlayVideoRef.current && overlayVideoRef.current.paused) {
+            overlayVideoRef.current.muted = true;
+            overlayVideoRef.current.play().catch(() => {});
+          }
+        });
       }
     }
   }, [currentTime, isPlaying, activeOverlayClip]);
@@ -705,10 +723,13 @@ export const PlayerPreview: React.FC = () => {
                     setCurrentTime(timelineTime);
                   }
                 }}
-                onError={() => {
+                onError={(e) => {
                   handleCanPlay();
-                  if (mainAsset && !mainAsset.isDrive) {
-                    markAssetOffline(mainAsset.id);
+                  const target = e.currentTarget;
+                  if (mainAsset && !mainAsset.isDrive && target.error?.code === 4) {
+                    fetch(mainAsset.url).catch(() => {
+                      markAssetOffline(mainAsset.id);
+                    });
                   }
                 }}
                 onLoadedMetadata={(e) => {
@@ -802,10 +823,13 @@ export const PlayerPreview: React.FC = () => {
                 onWaiting={handleWaiting}
                 onCanPlay={handleCanPlay}
                 onPlaying={handleCanPlay}
-                onError={() => {
+                onError={(e) => {
                   handleCanPlay();
-                  if (overlayAsset && !overlayAsset.isDrive) {
-                    markAssetOffline(overlayAsset.id);
+                  const target = e.currentTarget;
+                  if (overlayAsset && !overlayAsset.isDrive && target.error?.code === 4) {
+                    fetch(overlayAsset.url).catch(() => {
+                      markAssetOffline(overlayAsset.id);
+                    });
                   }
                 }}
                 onLoadedMetadata={(e) => {
