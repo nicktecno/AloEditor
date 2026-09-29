@@ -7,21 +7,42 @@
  * 1. Faz o pré-carregamento progressivo do vídeo diretamente no navegador em segundo plano.
  * 2. Armazena o blob em IndexedDB e gera um `blob:` URL local na memória RAM/VRAM.
  * 3. Permite scrubbing e reprodução com busca em 0ms (instantânea e sem rede).
+ * 4. Gerenciamento automático de ciclo de vida (LRU Eviction e limite máximo de tamanho).
  */
 
 const DB_NAME = 'AloEditorMediaCache';
 const DB_VERSION = 1;
 const STORE_NAME = 'drive_videos';
 
+// Limites inteligentes de cache local:
+// - Limite padrão: 1.5 GB máximo em IndexedDB para não sobrecarregar o armazenamento do dispositivo
+// - Expiração automática: arquivos sem uso há mais de 7 dias são podados automaticamente
+const MAX_CACHE_BYTES = 1.5 * 1024 * 1024 * 1024; // 1.5 GB
+const MAX_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
+
 const inMemoryBlobUrls = new Map<string, string>();
 const activePreloadTasks = new Map<string, Promise<string>>();
 
-interface CachedRecord {
+export interface CachedRecord {
   fileId: string;
   blob: Blob;
   mimeType: string;
   size: number;
   timestamp: number;
+}
+
+export interface CacheStats {
+  totalBytes: number;
+  fileCount: number;
+  formattedSize: string;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
 /**
@@ -48,6 +69,47 @@ function openCacheDatabase(): Promise<IDBDatabase> {
 }
 
 /**
+ * Limpeza automática por política LRU (Least Recently Used) e tempo de expiração
+ */
+async function pruneCacheIfNeeded(db: IDBDatabase): Promise<void> {
+  try {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const getAllReq = store.getAll();
+
+    getAllReq.onsuccess = () => {
+      const records = (getAllReq.result || []) as CachedRecord[];
+      if (records.length === 0) return;
+
+      const now = Date.now();
+      let totalSize = records.reduce((sum, r) => sum + (r.size || 0), 0);
+
+      // Ordena por data de uso mais antiga primeiro (LRU)
+      records.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+      for (const record of records) {
+        const isExpired = now - (record.timestamp || 0) > MAX_CACHE_AGE_MS;
+        const isOverLimit = totalSize > MAX_CACHE_BYTES;
+
+        if (isExpired || isOverLimit) {
+          store.delete(record.fileId);
+          totalSize -= record.size || 0;
+
+          // Revoga URL em memória para liberar RAM
+          if (inMemoryBlobUrls.has(record.fileId)) {
+            const url = inMemoryBlobUrls.get(record.fileId)!;
+            URL.revokeObjectURL(url);
+            inMemoryBlobUrls.delete(record.fileId);
+          }
+        }
+      }
+    };
+  } catch (err) {
+    console.warn('Erro ao podar cache do IndexedDB:', err);
+  }
+}
+
+/**
  * Recupera o Blob URL local se o arquivo do Drive já foi pré-carregado no navegador
  */
 export async function getCachedDriveVideoUrl(fileId: string): Promise<string | null> {
@@ -62,13 +124,17 @@ export async function getCachedDriveVideoUrl(fileId: string): Promise<string | n
   try {
     const db = await openCacheDatabase();
     return new Promise((resolve) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
+      const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
       const req = store.get(fileId);
 
       req.onsuccess = () => {
         const record = req.result as CachedRecord | undefined;
         if (record && record.blob) {
+          // Atualiza timestamp de último acesso
+          record.timestamp = Date.now();
+          store.put(record);
+
           const blobUrl = URL.createObjectURL(record.blob);
           inMemoryBlobUrls.set(fileId, blobUrl);
           resolve(blobUrl);
@@ -85,11 +151,13 @@ export async function getCachedDriveVideoUrl(fileId: string): Promise<string | n
 }
 
 /**
- * Salva o Blob baixado no IndexedDB
+ * Salva o Blob baixado no IndexedDB com verificação de cota
  */
 async function saveVideoToCache(fileId: string, blob: Blob, mimeType: string): Promise<void> {
   try {
     const db = await openCacheDatabase();
+    await pruneCacheIfNeeded(db);
+
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
@@ -222,10 +290,61 @@ export async function preloadDriveVideo({
 }
 
 /**
- * Limpa todos os vídeos em cache do IndexedDB
+ * Remove um vídeo específico do cache local e libera sua memória
+ */
+export async function evictCachedVideo(fileId: string): Promise<void> {
+  if (inMemoryBlobUrls.has(fileId)) {
+    const url = inMemoryBlobUrls.get(fileId)!;
+    URL.revokeObjectURL(url);
+    inMemoryBlobUrls.delete(fileId);
+  }
+
+  try {
+    const db = await openCacheDatabase();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).delete(fileId);
+  } catch {}
+}
+
+/**
+ * Obtém estatísticas do cache de mídia (tamanho total e quantidade de arquivos)
+ */
+export async function getCacheStats(): Promise<CacheStats> {
+  try {
+    const db = await openCacheDatabase();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.getAll();
+
+      req.onsuccess = () => {
+        const records = (req.result || []) as CachedRecord[];
+        const totalBytes = records.reduce((sum, r) => sum + (r.size || 0), 0);
+        resolve({
+          totalBytes,
+          fileCount: records.length,
+          formattedSize: formatBytes(totalBytes),
+        });
+      };
+
+      req.onerror = () => resolve({ totalBytes: 0, fileCount: 0, formattedSize: '0 B' });
+    });
+  } catch {
+    return { totalBytes: 0, fileCount: 0, formattedSize: '0 B' };
+  }
+}
+
+/**
+ * Limpa todos os vídeos em cache do IndexedDB e revoga todas as URLs em memória
  */
 export async function clearAllDriveCache(): Promise<void> {
+  inMemoryBlobUrls.forEach((url) => {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {}
+  });
   inMemoryBlobUrls.clear();
+
   try {
     const db = await openCacheDatabase();
     const tx = db.transaction(STORE_NAME, 'readwrite');

@@ -23,7 +23,9 @@ import {
   Scissors,
   X,
   FolderSearch,
+  Database,
 } from 'lucide-react';
+import { getCacheStats, clearAllDriveCache } from '@/services/driveVideoCache';
 import { EFFECT_PRESETS, TRANSITION_PRESETS } from '@/utils/transitionUtils';
 import { TimelineClip, TransitionType } from '@/types/editor';
 import { BackgroundRemoverPanel } from './BackgroundRemoverPanel';
@@ -133,6 +135,20 @@ export const MediaPanel: React.FC = () => {
     if (!confirmClear) return;
     unusedAssets.forEach((a) => removeAsset(a.id, false));
     showFeedback(`${unusedAssets.length} mídia(s) não utilizada(s) removida(s).`);
+  };
+
+  const handleClearCache = async () => {
+    const stats = await getCacheStats();
+    if (stats.fileCount === 0) {
+      showFeedback('O cache local do navegador já está vazio (0 B).');
+      return;
+    }
+    const confirmClear = confirm(
+      `Deseja liberar o cache local do navegador?\n\nEspaço ocupado: ${stats.formattedSize} (${stats.fileCount} arquivo(s)).\nIsso liberará o armazenamento do seu dispositivo.`
+    );
+    if (!confirmClear) return;
+    await clearAllDriveCache();
+    showFeedback(`Cache local (${stats.formattedSize}) liberado com sucesso!`);
   };
 
   // Find target clip: selected clip first, or clip currently under playhead, or first video/text clip
@@ -500,17 +516,29 @@ export const MediaPanel: React.FC = () => {
                 </button>
               </div>
 
-              {project.assets.length > 0 && (
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <button
                   type="button"
                   className={styles.clearAssetsBtn}
-                  onClick={handleClearUnusedAssets}
-                  title="Apagar mídias que não estão em uso na linha do tempo"
+                  onClick={handleClearCache}
+                  title="Liberar cache local de vídeos do Google Drive no navegador"
                 >
-                  <Trash2 size={12} />
-                  <span>Limpar não usadas</span>
+                  <Database size={11} />
+                  <span>Limpar Cache</span>
                 </button>
-              )}
+
+                {project.assets.length > 0 && (
+                  <button
+                    type="button"
+                    className={styles.clearAssetsBtn}
+                    onClick={handleClearUnusedAssets}
+                    title="Apagar mídias que não estão em uso na linha do tempo"
+                  >
+                    <Trash2 size={11} />
+                    <span>Limpar não usadas</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Asset Cards Grid */}

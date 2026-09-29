@@ -25,7 +25,7 @@ import {
   GoogleDriveFile,
 } from '@/services/googleDrive';
 import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail } from '@/utils/thumbnailGenerator';
-import { getCachedDriveVideoUrl, preloadDriveVideo } from '@/services/driveVideoCache';
+import { getCachedDriveVideoUrl, preloadDriveVideo, evictCachedVideo, clearAllDriveCache } from '@/services/driveVideoCache';
 
 interface EditorContextType {
   project: Project;
@@ -1379,6 +1379,18 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Remove asset from project library (optionally removing associated clips)
   const removeAsset = useCallback((assetId: string, deleteAssociatedClips = false) => {
+    const targetAsset = projectRef.current.assets.find((a) => a.id === assetId);
+    if (targetAsset) {
+      if (targetAsset.driveFileId) {
+        evictCachedVideo(targetAsset.driveFileId);
+      }
+      if (targetAsset.proxyUrl && targetAsset.proxyUrl.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(targetAsset.proxyUrl);
+        } catch {}
+      }
+    }
+
     updateProjectWithHistory((prev) => ({
       ...prev,
       assets: prev.assets.filter((a) => a.id !== assetId),
