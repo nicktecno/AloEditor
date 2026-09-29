@@ -36,12 +36,33 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({ totalDuration }) =
     const clickedTime = Math.max(0, clickX / zoom);
     setCurrentTime(clickedTime);
 
+    let rafId: number | null = null;
+    let pendingTime: number | null = null;
+
     const onPointerMove = (moveEvent: PointerEvent) => {
       const currentX = moveEvent.clientX - rect.left;
-      setCurrentTime(Math.max(0, currentX / zoom));
+      pendingTime = Math.max(0, currentX / zoom);
+
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          if (pendingTime !== null) {
+            setCurrentTime(pendingTime);
+            pendingTime = null;
+          }
+        });
+      }
     };
 
     const onPointerUp = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      if (pendingTime !== null) {
+        setCurrentTime(pendingTime);
+        pendingTime = null;
+      }
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
     };

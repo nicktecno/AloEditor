@@ -125,6 +125,10 @@
   height: 100%;
   object-fit: contain;
   pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
+  contain: paint layout;
 }
 
 /* Proxy / Low-Quality Preview Underlay (Prevents black screen while loading) */
@@ -598,4 +602,31 @@
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(6, 182, 212, 0.5);
 }
+
+.gpuBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--radius-xs, 4px);
+  color: #10b981;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: default;
+  user-select: none;
+  transition: all var(--ease-fast);
+}
+
+.gpuBadge:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.gpuIcon {
+  color: #10b981;
+}
+
 

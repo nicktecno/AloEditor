@@ -5,6 +5,7 @@ import { useEditor } from '@/context/EditorContext';
 import { getClipTransitionState, getClipAudioVolume } from '@/utils/transitionUtils';
 import { processFrameBackgroundRemoval } from '@/utils/backgroundRemoval';
 import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail, getMediaDuration, handleThumbnailError } from '@/utils/thumbnailGenerator';
+import { createWebGLVideoPipeline, seekHardwareAccelerated, WebGLVideoPipeline } from '@/utils/webglRenderer';
 import { MediaAsset } from '@/types/editor';
 import { AlertTriangle, FolderSearch } from 'lucide-react';
 import styles from './Player.module.css';
@@ -131,6 +132,50 @@ export const PlayerPreview: React.FC = () => {
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
 
+  // Hardware Acceleration Refs & RAF Throttling
+  const pendingMainSeekRef = useRef<number | null>(null);
+  const mainSeekRafRef = useRef<number | null>(null);
+  const pendingOverlaySeekRef = useRef<number | null>(null);
+  const overlaySeekRafRef = useRef<number | null>(null);
+
+  const mainWebGLPipelineRef = useRef<WebGLVideoPipeline | null>(null);
+  const overlayWebGLPipelineRef = useRef<WebGLVideoPipeline | null>(null);
+
+  const requestMainHardwareSeek = (targetTime: number, allowFast = true) => {
+    pendingMainSeekRef.current = targetTime;
+    if (mainSeekRafRef.current === null) {
+      mainSeekRafRef.current = requestAnimationFrame(() => {
+        mainSeekRafRef.current = null;
+        if (mainVideoRef.current && pendingMainSeekRef.current !== null) {
+          seekHardwareAccelerated(mainVideoRef.current, pendingMainSeekRef.current, allowFast);
+          pendingMainSeekRef.current = null;
+        }
+      });
+    }
+  };
+
+  const requestOverlayHardwareSeek = (targetTime: number, allowFast = true) => {
+    pendingOverlaySeekRef.current = targetTime;
+    if (overlaySeekRafRef.current === null) {
+      overlaySeekRafRef.current = requestAnimationFrame(() => {
+        overlaySeekRafRef.current = null;
+        if (overlayVideoRef.current && pendingOverlaySeekRef.current !== null) {
+          seekHardwareAccelerated(overlayVideoRef.current, pendingOverlaySeekRef.current, allowFast);
+          pendingOverlaySeekRef.current = null;
+        }
+      });
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (mainSeekRafRef.current) cancelAnimationFrame(mainSeekRafRef.current);
+      if (overlaySeekRafRef.current) cancelAnimationFrame(overlaySeekRafRef.current);
+      if (mainWebGLPipelineRef.current) mainWebGLPipelineRef.current.destroy();
+      if (overlayWebGLPipelineRef.current) overlayWebGLPipelineRef.current.destroy();
+    };
+  }, []);
+
   // Dragging state for free-form text positioning
   const [draggingTextId, setDraggingTextId] = React.useState<string | null>(null);
   const [dragCoords, setDragCoords] = React.useState<{ x: number; y: number } | null>(null);
@@ -253,7 +298,7 @@ export const PlayerPreview: React.FC = () => {
 
     if (!isPlaying) {
       if (isClipSwitch || Math.abs(mainVideoRef.current.currentTime - mediaOffset) > 0.05) {
-        mainVideoRef.current.currentTime = mediaOffset;
+        requestMainHardwareSeek(mediaOffset, true);
       }
       if (!mainVideoRef.current.paused) {
         mainVideoRef.current.pause();
@@ -265,7 +310,7 @@ export const PlayerPreview: React.FC = () => {
       } else {
         // Only seek if switching clips or user clicked/scrubbed far away (> 2.0s jump)
         if (isClipSwitch || Math.abs(mainVideoRef.current.currentTime - mediaOffset) > 2.0) {
-          mainVideoRef.current.currentTime = mediaOffset;
+          requestMainHardwareSeek(mediaOffset, true);
         }
       }
       if (mainVideoRef.current.paused) {
@@ -298,7 +343,7 @@ export const PlayerPreview: React.FC = () => {
 
     if (!isPlaying) {
       if (isClipSwitch || Math.abs(overlayVideoRef.current.currentTime - mediaOffset) > 0.05) {
-        overlayVideoRef.current.currentTime = mediaOffset;
+        requestOverlayHardwareSeek(mediaOffset, true);
       }
       if (!overlayVideoRef.current.paused) {
         overlayVideoRef.current.pause();
@@ -306,7 +351,7 @@ export const PlayerPreview: React.FC = () => {
     } else {
       // While playing: only hard seek on clip switch or significant user scrub (> 1.2s), preventing mobile decoder stalls
       if (isClipSwitch || Math.abs(overlayVideoRef.current.currentTime - mediaOffset) > 1.2) {
-        overlayVideoRef.current.currentTime = mediaOffset;
+        requestOverlayHardwareSeek(mediaOffset, true);
       }
       if (overlayVideoRef.current.paused) {
         overlayVideoRef.current.play().catch(() => {});
@@ -314,7 +359,7 @@ export const PlayerPreview: React.FC = () => {
     }
   }, [currentTime, isPlaying, activeOverlayClip]);
 
-  // Real-time Chroma Key & Background Removal for Overlay Video/Image
+  // Real-time Hardware WebGL Chroma Key & Background Removal for Overlay Video/Image
   useEffect(() => {
     let animId: number;
     const renderOverlayChroma = () => {
@@ -332,9 +377,26 @@ export const PlayerPreview: React.FC = () => {
           canvas.width = w;
           canvas.height = h;
         }
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          processFrameBackgroundRemoval(vid, ctx, w, h, activeOverlayClip.backgroundRemoval);
+
+        // Tenta renderizar via WebGL acelerado por GPU
+        if (!overlayWebGLPipelineRef.current) {
+          overlayWebGLPipelineRef.current = createWebGLVideoPipeline(canvas);
+        }
+
+        if (overlayWebGLPipelineRef.current) {
+          try {
+            overlayWebGLPipelineRef.current.render(vid, {
+              backgroundRemoval: activeOverlayClip.backgroundRemoval,
+            });
+          } catch {
+            overlayWebGLPipelineRef.current = null;
+          }
+        } else {
+          // Fallback seguro CPU Canvas 2D
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            processFrameBackgroundRemoval(vid, ctx, w, h, activeOverlayClip.backgroundRemoval);
+          }
         }
       }
       animId = requestAnimationFrame(renderOverlayChroma);
@@ -349,7 +411,7 @@ export const PlayerPreview: React.FC = () => {
     };
   }, [activeOverlayClip, activeOverlayClip?.backgroundRemoval, isPlaying]);
 
-  // Real-time Chroma Key & Background Removal for Main Video/Image
+  // Real-time Hardware WebGL Chroma Key & Background Removal for Main Video/Image
   useEffect(() => {
     let animId: number;
     const renderMainChroma = () => {
@@ -367,9 +429,26 @@ export const PlayerPreview: React.FC = () => {
           canvas.width = w;
           canvas.height = h;
         }
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          processFrameBackgroundRemoval(vid, ctx, w, h, activeMainClip.backgroundRemoval);
+
+        // Tenta renderizar via WebGL acelerado por GPU
+        if (!mainWebGLPipelineRef.current) {
+          mainWebGLPipelineRef.current = createWebGLVideoPipeline(canvas);
+        }
+
+        if (mainWebGLPipelineRef.current) {
+          try {
+            mainWebGLPipelineRef.current.render(vid, {
+              backgroundRemoval: activeMainClip.backgroundRemoval,
+            });
+          } catch {
+            mainWebGLPipelineRef.current = null;
+          }
+        } else {
+          // Fallback seguro CPU Canvas 2D
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            processFrameBackgroundRemoval(vid, ctx, w, h, activeMainClip.backgroundRemoval);
+          }
         }
       }
       animId = requestAnimationFrame(renderMainChroma);
@@ -640,7 +719,8 @@ export const PlayerPreview: React.FC = () => {
                 }}
                 style={{
                   display: activeMainClip.backgroundRemoval?.enabled ? 'none' : 'block',
-                  transform: `translate(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
+                  transform: `translate3d(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%, 0) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
+                  willChange: 'transform',
                   opacity: mainTrans?.opacity ?? 1,
                   filter: mainTrans?.filterString || undefined,
                   zIndex: 2,
@@ -652,7 +732,8 @@ export const PlayerPreview: React.FC = () => {
                 ref={mainCanvasRef}
                 className={styles.videoLayer}
                 style={{
-                  transform: `translate(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
+                  transform: `translate3d(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%, 0) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
+                  willChange: 'transform',
                   opacity: mainTrans?.opacity ?? 1,
                   filter: mainTrans?.filterString || undefined,
                   objectFit: 'contain',
@@ -739,7 +820,8 @@ export const PlayerPreview: React.FC = () => {
                   left: `${activeOverlayClip.transform.position.x + (overlayTrans?.positionX || 0)}%`,
                   top: `${activeOverlayClip.transform.position.y + (overlayTrans?.positionY || 0)}%`,
                   width: `${(overlayTrans?.scale || activeOverlayClip.transform.scale) * 100}%`,
-                  transform: `translate(-50%, -50%) rotate(${activeOverlayClip.transform.rotation}deg)`,
+                  transform: `translate3d(-50%, -50%, 0) rotate(${activeOverlayClip.transform.rotation}deg)`,
+                  willChange: 'transform',
                   opacity: overlayTrans?.opacity ?? 1,
                   filter: overlayTrans?.filterString || undefined,
                   borderRadius: '8px',
@@ -757,7 +839,8 @@ export const PlayerPreview: React.FC = () => {
                   left: `${activeOverlayClip.transform.position.x + (overlayTrans?.positionX || 0)}%`,
                   top: `${activeOverlayClip.transform.position.y + (overlayTrans?.positionY || 0)}%`,
                   width: `${(overlayTrans?.scale || activeOverlayClip.transform.scale) * 100}%`,
-                  transform: `translate(-50%, -50%) rotate(${activeOverlayClip.transform.rotation}deg)`,
+                  transform: `translate3d(-50%, -50%, 0) rotate(${activeOverlayClip.transform.rotation}deg)`,
+                  willChange: 'transform',
                   opacity: overlayTrans?.opacity ?? 1,
                   filter: overlayTrans?.filterString || undefined,
                   zIndex: 5,

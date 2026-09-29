@@ -687,25 +687,13 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       lastTimeRef.current = time;
 
       const curTime = currentTimeRef.current;
-      const hasActiveVideoClip = projectRef.current.clips.some(
-        (c) =>
-          c.trackId === 'track_video_main' &&
-          curTime >= c.startInTimeline &&
-          curTime < c.startInTimeline + c.duration
-      );
-
-      // If an active main video clip is on the timeline, the HTML5 video element itself in PlayerPreview
-      // drives playback time smoothly with hardware decoding.
-      // If no video clip is active (gap, text-only, or audio-only), the timer loop advances smoothly:
-      if (!hasActiveVideoClip) {
-        const nextTime = curTime + delta;
-        if (nextTime >= projectRef.current.duration) {
-          setIsPlaying(false);
-          setCurrentTime(0);
-          return;
-        } else {
-          setCurrentTime(nextTime);
-        }
+      const nextTime = curTime + delta;
+      if (nextTime >= projectRef.current.duration) {
+        setIsPlaying(false);
+        setCurrentTime(0);
+        return;
+      } else {
+        setCurrentTime(nextTime);
       }
 
       animationFrameRef.current = requestAnimationFrame(loop);

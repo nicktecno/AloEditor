@@ -13,6 +13,7 @@ import {
   Maximize2,
   RotateCcw,
   RotateCw,
+  Zap,
 } from 'lucide-react';
 import styles from './Player.module.css';
 
@@ -148,6 +149,14 @@ export const PlayerControls: React.FC = () => {
           <option value="1.5">1.5x</option>
           <option value="2">2.0x</option>
         </select>
+
+        <div
+          className={styles.gpuBadge}
+          title="Renderização e Decodificação Aceleradas por Hardware (GPU / WebGL / WebCodecs)"
+        >
+          <Zap size={12} className={styles.gpuIcon} />
+          <span>GPU</span>
+        </div>
 
         <button
           className={styles.controlBtn}

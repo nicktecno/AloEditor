@@ -307,18 +307,38 @@ export const Timeline: React.FC = () => {
     const targetEl = e.currentTarget;
     targetEl.setPointerCapture(e.pointerId);
 
+    let rafId: number | null = null;
+    let pendingTime: number | null = null;
+
     const onPointerMove = (moveEvent: PointerEvent) => {
       if (!scrollContainerRef.current) return;
       const rect = scrollContainerRef.current.getBoundingClientRect();
       const x = moveEvent.clientX - rect.left + scrollContainerRef.current.scrollLeft;
-      const newTime = Math.max(0, x / zoom);
-      setCurrentTime(newTime);
+      pendingTime = Math.max(0, x / zoom);
+
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          if (pendingTime !== null) {
+            setCurrentTime(pendingTime);
+            pendingTime = null;
+          }
+        });
+      }
     };
 
     const onPointerUp = (upEvent: PointerEvent) => {
       try {
         targetEl.releasePointerCapture(upEvent.pointerId);
       } catch {}
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      if (pendingTime !== null) {
+        setCurrentTime(pendingTime);
+        pendingTime = null;
+      }
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
     };
