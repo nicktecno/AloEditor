@@ -115,7 +115,8 @@ interface EditorContextType {
   setAspectRatio: (ratio: AspectRatio) => void;
   addClipToTrack: (asset: MediaAsset, trackId?: string, targetStartTime?: number) => void;
   addTextClip: () => void;
-  updateClip: (clipId: string, updates: Partial<TimelineClip>) => void;
+  updateClip: (clipId: string, updates: Partial<TimelineClip>, recordHistory?: boolean) => void;
+  commitHistory: () => void;
   deleteClip: (clipId: string) => void;
   deleteSelectedClips: () => void;
   splitClipAtPlayhead: (clipId?: string) => void;
@@ -677,6 +678,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const historyRef = useRef<Project[]>([INITIAL_PROJECT]);
   const historyIndexRef = useRef<number>(0);
+  const historyDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     historyRef.current = history;
@@ -690,6 +692,41 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const pushHistory = useCallback((newProject: Project) => {
     setHistory((prev) => {
       const curIndex = historyIndexRef.current;
+      const currentProj = prev[curIndex];
+
+      // Evita duplicar estado idêntico se nada tiver mudado
+      if (currentProj && currentProj === newProject) {
+        return prev;
+      }
+      if (
+        currentProj &&
+        currentProj.clips.length === newProject.clips.length &&
+        currentProj.tracks.length === newProject.tracks.length &&
+        currentProj.duration === newProject.duration &&
+        currentProj.clips.every((c, idx) => {
+          const oc = newProject.clips[idx];
+          return (
+            oc &&
+            c.id === oc.id &&
+            c.startInTimeline === oc.startInTimeline &&
+            c.duration === oc.duration &&
+            c.trimStart === oc.trimStart &&
+            c.trimEnd === oc.trimEnd &&
+            c.speed === oc.speed &&
+            c.volume === oc.volume &&
+            c.isMuted === oc.isMuted &&
+            c.text === oc.text &&
+            c.transform?.scale === oc.transform?.scale &&
+            c.transform?.position?.x === oc.transform?.position?.x &&
+            c.transform?.position?.y === oc.transform?.position?.y &&
+            c.transform?.rotation === oc.transform?.rotation &&
+            c.transform?.opacity === oc.transform?.opacity
+          );
+        })
+      ) {
+        return prev;
+      }
+
       // Descarta qualquer futuro de redo à frente do índice atual
       const validSlice = prev.slice(0, curIndex + 1);
       const combined = [...validSlice, newProject];
@@ -712,7 +749,23 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, []);
 
+  const commitHistory = useCallback(() => {
+    if (historyDebounceTimerRef.current) {
+      clearTimeout(historyDebounceTimerRef.current);
+      historyDebounceTimerRef.current = null;
+    }
+    setProject((prev) => {
+      projectRef.current = prev;
+      pushHistory(prev);
+      return prev;
+    });
+  }, [pushHistory]);
+
   const updateProjectWithHistory = useCallback((updater: (prev: Project) => Project) => {
+    if (historyDebounceTimerRef.current) {
+      clearTimeout(historyDebounceTimerRef.current);
+      historyDebounceTimerRef.current = null;
+    }
     setProject((prev) => {
       const next = updater(prev);
       projectRef.current = next;
@@ -722,6 +775,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [pushHistory]);
 
   const undo = useCallback(() => {
+    if (historyDebounceTimerRef.current) {
+      clearTimeout(historyDebounceTimerRef.current);
+      historyDebounceTimerRef.current = null;
+    }
     const curIdx = historyIndexRef.current;
     const curHistory = historyRef.current;
     if (curIdx > 0) {
@@ -749,6 +806,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const redo = useCallback(() => {
+    if (historyDebounceTimerRef.current) {
+      clearTimeout(historyDebounceTimerRef.current);
+      historyDebounceTimerRef.current = null;
+    }
     const curIdx = historyIndexRef.current;
     const curHistory = historyRef.current;
     if (curIdx < curHistory.length - 1) {
@@ -1080,7 +1141,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [currentTime, updateProjectWithHistory]);
 
   // Update clip
-  const updateClip = useCallback((clipId: string, updates: Partial<TimelineClip>) => {
+  const updateClip = useCallback((clipId: string, updates: Partial<TimelineClip>, recordHistory = false) => {
     setProject((prev) => {
       const updatedClips = prev.clips.map((clip) => {
         if (clip.id !== clipId) return clip;
@@ -1114,13 +1175,34 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
 
       const maxEnd = updatedClips.reduce((max, c) => Math.max(max, c.startInTimeline + c.duration), 15);
-      return {
+      const nextProject: Project = {
         ...prev,
         duration: Math.max(maxEnd + 2, 15),
         clips: updatedClips,
       };
+
+      projectRef.current = nextProject;
+
+      if (recordHistory) {
+        if (historyDebounceTimerRef.current) {
+          clearTimeout(historyDebounceTimerRef.current);
+          historyDebounceTimerRef.current = null;
+        }
+        pushHistory(nextProject);
+      } else {
+        // Fallback debounce: grava no histórico 500ms após a última edição caso nenhum commit explícito ocorra
+        if (historyDebounceTimerRef.current) {
+          clearTimeout(historyDebounceTimerRef.current);
+        }
+        historyDebounceTimerRef.current = setTimeout(() => {
+          historyDebounceTimerRef.current = null;
+          pushHistory(projectRef.current);
+        }, 500);
+      }
+
+      return nextProject;
     });
-  }, []);
+  }, [pushHistory]);
 
   // Delete single clip
   const deleteClip = useCallback((clipId: string) => {
@@ -2159,6 +2241,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addClipToTrack,
         addTextClip,
         updateClip,
+        commitHistory,
         deleteClip,
         deleteSelectedClips,
         splitClipAtPlayhead,

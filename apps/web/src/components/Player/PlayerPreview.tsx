@@ -97,6 +97,7 @@ export const PlayerPreview: React.FC = () => {
     selectedClipIds,
     selectClip,
     updateClip,
+    commitHistory,
     syncMediaDuration,
     addClipToTrack,
     addAsset,
@@ -501,6 +502,7 @@ export const PlayerPreview: React.FC = () => {
     const startPointerY = e.clientY;
     const initialPosX = textClip.transform.position.x;
     const initialPosY = textClip.transform.position.y;
+    let didMove = false;
 
     setDraggingTextId(textClip.id);
     setDragCoords({ x: initialPosX, y: initialPosY });
@@ -551,6 +553,10 @@ export const PlayerPreview: React.FC = () => {
       const roundedX = Math.round(targetX * 10) / 10;
       const roundedY = Math.round(targetY * 10) / 10;
 
+      if (Math.abs(roundedX - initialPosX) > 0.1 || Math.abs(roundedY - initialPosY) > 0.1) {
+        didMove = true;
+      }
+
       setDragCoords({ x: roundedX, y: roundedY });
 
       updateClip(textClip.id, {
@@ -571,6 +577,9 @@ export const PlayerPreview: React.FC = () => {
       setDragCoords(null);
       setSnapGuideX(false);
       setSnapGuideY(false);
+      if (didMove) {
+        commitHistory();
+      }
     };
 
     window.addEventListener('pointermove', onPointerMove);
@@ -581,12 +590,16 @@ export const PlayerPreview: React.FC = () => {
   const handleApplyTextPreset = (clipId: string, posX: number, posY: number) => {
     const clip = project.clips.find((c) => c.id === clipId);
     if (!clip) return;
-    updateClip(clipId, {
-      transform: {
-        ...clip.transform,
-        position: { x: posX, y: posY },
+    updateClip(
+      clipId,
+      {
+        transform: {
+          ...clip.transform,
+          position: { x: posX, y: posY },
+        },
       },
-    });
+      true
+    );
   };
 
   // Aspect ratio class mapper

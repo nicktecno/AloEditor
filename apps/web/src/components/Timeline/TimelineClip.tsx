@@ -18,6 +18,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     selectedClipIds,
     selectClip,
     updateClip,
+    commitHistory,
     currentTime,
     isSnappingEnabled,
     setSnapGuideTime,
@@ -95,6 +96,8 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     const snapThresholdSec = 22 / zoom;
 
     let rafId: number | null = null;
+    let didMove = false;
+    let lastEffectiveDelta = 0;
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       if (!isDraggingRef.current) return;
@@ -134,6 +137,11 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
 
       // Effective delta applied to all selected clips
       const effectiveDelta = targetStart - baseStart;
+      lastEffectiveDelta = effectiveDelta;
+
+      if (Math.abs(effectiveDelta) > 0.001) {
+        didMove = true;
+      }
 
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
@@ -145,7 +153,17 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     };
 
     const onPointerUp = () => {
-      if (rafId) cancelAnimationFrame(rafId);
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      if (didMove) {
+        Object.entries(initialStartsRef.current).forEach(([cId, initStart]) => {
+          const newStart = Math.max(0, parseFloat((initStart + lastEffectiveDelta).toFixed(3)));
+          updateClip(cId, { startInTimeline: newStart });
+        });
+        commitHistory();
+      }
       isDraggingRef.current = false;
       setIsDragging(false);
       setSnapGuideTime(null);
@@ -172,6 +190,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     const speed = clip.speed || 1.0;
     const isBoundedMedia = (clip.type === 'video' || clip.type === 'audio') && !!asset?.duration;
     const assetMaxDuration = asset?.duration || 999999;
+    let didChange = false;
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX;
@@ -213,11 +232,24 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
         ? Math.min(assetMaxDuration, newTrimStart + newDuration * speed)
         : newTrimStart + newDuration * speed;
 
+      const formattedStart = parseFloat(newStart.toFixed(3));
+      const formattedDuration = parseFloat(newDuration.toFixed(3));
+      const formattedTrimStart = parseFloat(newTrimStart.toFixed(3));
+      const formattedTrimEnd = parseFloat(calculatedTrimEnd.toFixed(3));
+
+      if (
+        Math.abs(formattedStart - initialStart) > 0.001 ||
+        Math.abs(formattedDuration - initialDuration) > 0.001 ||
+        Math.abs(formattedTrimStart - initialTrimStart) > 0.001
+      ) {
+        didChange = true;
+      }
+
       updateClip(clip.id, {
-        startInTimeline: parseFloat(newStart.toFixed(3)),
-        duration: parseFloat(newDuration.toFixed(3)),
-        trimStart: parseFloat(newTrimStart.toFixed(3)),
-        trimEnd: parseFloat(calculatedTrimEnd.toFixed(3)),
+        startInTimeline: formattedStart,
+        duration: formattedDuration,
+        trimStart: formattedTrimStart,
+        trimEnd: formattedTrimEnd,
       });
     };
 
@@ -226,6 +258,9 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
+      if (didChange) {
+        commitHistory();
+      }
     };
 
     window.addEventListener('pointermove', onPointerMove);
@@ -248,6 +283,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     const maxAllowedDuration = isBoundedMedia
       ? Math.max(0.2, (assetMaxDuration - trimStart) / speed)
       : 999999;
+    let didChange = false;
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX;
@@ -268,10 +304,16 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
       }
 
       const calculatedTrimEnd = Math.min(assetMaxDuration, trimStart + newDuration * speed);
+      const formattedDuration = parseFloat(newDuration.toFixed(3));
+      const formattedTrimEnd = parseFloat(calculatedTrimEnd.toFixed(3));
+
+      if (Math.abs(formattedDuration - initialDuration) > 0.001) {
+        didChange = true;
+      }
 
       updateClip(clip.id, {
-        duration: parseFloat(newDuration.toFixed(3)),
-        trimEnd: parseFloat(calculatedTrimEnd.toFixed(3)),
+        duration: formattedDuration,
+        trimEnd: formattedTrimEnd,
       });
     };
 
@@ -280,6 +322,9 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
+      if (didChange) {
+        commitHistory();
+      }
     };
 
     window.addEventListener('pointermove', onPointerMove);
