@@ -703,7 +703,7 @@ export const PlayerPreview: React.FC = () => {
             ) : (
               <video
                 ref={mainVideoRef}
-                src={mainAsset.url}
+                src={mainAsset.proxyUrl || mainAsset.url}
                 className={styles.videoLayer}
                 playsInline
                 preload="auto"
@@ -815,7 +815,7 @@ export const PlayerPreview: React.FC = () => {
             ) : (
               <video
                 ref={overlayVideoRef}
-                src={overlayAsset.url}
+                src={overlayAsset.proxyUrl || overlayAsset.url}
                 playsInline
                 preload="auto"
                 poster={overlayAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
@@ -985,7 +985,7 @@ export const PlayerPreview: React.FC = () => {
             <AudioTrackPlayer
               key={audioClip.id}
               clip={audioClip}
-              assetUrl={asset.url}
+              assetUrl={asset.proxyUrl || asset.url}
               currentTime={currentTime}
               isPlaying={isPlaying}
               onSyncDuration={syncMediaDuration}

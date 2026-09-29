@@ -14,6 +14,7 @@ import {
   RotateCcw,
   RotateCw,
   Zap,
+  CheckCircle,
 } from 'lucide-react';
 import styles from './Player.module.css';
 
@@ -149,6 +150,38 @@ export const PlayerControls: React.FC = () => {
           <option value="1.5">1.5x</option>
           <option value="2">2.0x</option>
         </select>
+
+        {/* Status de Pré-carregamento e Cache do Google Drive */}
+        {(() => {
+          const driveAsset = project.assets.find((a) => a.isDrive && a.driveFileId);
+          if (!driveAsset) return null;
+
+          if (driveAsset.proxyUrl) {
+            return (
+              <div
+                className={styles.cacheReadyBadge}
+                title="Vídeo do Google Drive pré-carregado no cache local do navegador (0ms de latência, sem travamentos)"
+              >
+                <CheckCircle size={12} />
+                <span>Drive Cache 100%</span>
+              </div>
+            );
+          }
+
+          if ((driveAsset.preloadProgress ?? 0) > 0 && (driveAsset.preloadProgress ?? 0) < 100) {
+            return (
+              <div
+                className={styles.preloadBadge}
+                title={`Pré-carregando vídeo do Google Drive no navegador para reprodução instantânea (${driveAsset.preloadProgress}%)`}
+              >
+                <div className={styles.preloadSpinner} />
+                <span>Drive {driveAsset.preloadProgress}%</span>
+              </div>
+            );
+          }
+
+          return null;
+        })()}
 
         <div
           className={styles.gpuBadge}

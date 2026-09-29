@@ -173,7 +173,7 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
             {/* Video element for real-time hover scrubbing and preview */}
             <video
               ref={videoRef}
-              src={asset.url}
+              src={asset.proxyUrl || asset.url}
               preload="metadata"
               muted
               playsInline
@@ -202,9 +202,12 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
         )}
 
         {asset.isDrive ? (
-          <div className={styles.badgeDrive}>
+          <div
+            className={styles.badgeDrive}
+            title={asset.proxyUrl ? 'Vídeo em cache local no navegador (0ms latência)' : 'Vídeo do Google Drive'}
+          >
             <Cloud size={10} />
-            <span>DRIVE</span>
+            <span>{asset.proxyUrl ? 'DRIVE • CACHE' : (asset.preloadProgress && asset.preloadProgress < 100 ? `DRIVE ${asset.preloadProgress}%` : 'DRIVE')}</span>
           </div>
         ) : asset.isOffline ? (
           <div className={styles.badgeOffline} title="Arquivo offline. Reconecte a pasta para reativar.">

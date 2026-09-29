@@ -25,6 +25,7 @@ import {
   GoogleDriveFile,
 } from '@/services/googleDrive';
 import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail } from '@/utils/thumbnailGenerator';
+import { getCachedDriveVideoUrl, preloadDriveVideo } from '@/services/driveVideoCache';
 
 interface EditorContextType {
   project: Project;
@@ -403,6 +404,64 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       isCancelled = true;
     };
   }, [isHydrated, project.id]);
+
+  // Auto-preload and cache Google Drive videos in the background (IndexedDB & in-memory Blob)
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    const driveAssets = project.assets.filter((a) => a.isDrive && a.driveFileId && !a.proxyUrl);
+    if (driveAssets.length === 0) return;
+
+    let isCancelled = false;
+
+    driveAssets.forEach((asset) => {
+      const fileId = asset.driveFileId!;
+      getCachedDriveVideoUrl(fileId).then((cachedBlobUrl) => {
+        if (isCancelled) return;
+        if (cachedBlobUrl) {
+          setProject((prev) => ({
+            ...prev,
+            assets: prev.assets.map((a) =>
+              a.id === asset.id ? { ...a, proxyUrl: cachedBlobUrl, preloadProgress: 100 } : a
+            ),
+          }));
+          return;
+        }
+
+        // Inicia download e cache progressivo em segundo plano
+        preloadDriveVideo({
+          fileId,
+          streamUrl: asset.url,
+          token: googleAccessToken,
+          onProgress: (percent) => {
+            if (isCancelled) return;
+            setProject((prev) => ({
+              ...prev,
+              assets: prev.assets.map((a) =>
+                a.id === asset.id ? { ...a, preloadProgress: percent } : a
+              ),
+            }));
+          },
+        })
+          .then((blobUrl) => {
+            if (isCancelled) return;
+            setProject((prev) => ({
+              ...prev,
+              assets: prev.assets.map((a) =>
+                a.id === asset.id ? { ...a, proxyUrl: blobUrl, preloadProgress: 100 } : a
+              ),
+            }));
+          })
+          .catch((err) => {
+            console.warn('Erro ao pré-carregar vídeo do Drive no cache:', err);
+          });
+      });
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isHydrated, project.assets, googleAccessToken]);
 
   // Helper single clip selected ID
   const selectedClipId = selectedClipIds[0] || null;

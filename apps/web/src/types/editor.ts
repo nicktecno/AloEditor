@@ -14,6 +14,8 @@ export interface MediaAsset {
   size?: number; // bytes
   isDrive?: boolean;
   isOffline?: boolean;
+  proxyUrl?: string;
+  preloadProgress?: number; // 0 to 100
 }
 
 export interface ClipTransform {
