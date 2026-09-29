@@ -22,6 +22,7 @@ import {
   Zap,
   Scissors,
   X,
+  FolderSearch,
 } from 'lucide-react';
 import { EFFECT_PRESETS, TRANSITION_PRESETS } from '@/utils/transitionUtils';
 import { TimelineClip, TransitionType } from '@/types/editor';
@@ -48,6 +49,8 @@ export const MediaPanel: React.FC = () => {
     updateAssetThumbnail,
     syncMediaDuration,
     setIsDrivePickerOpen,
+    setIsRelinkModalOpen,
+    offlineAssetsCount,
     openGooglePicker,
     googleAccessToken,
     driveVideos,
@@ -373,6 +376,21 @@ export const MediaPanel: React.FC = () => {
           <>
             <div className={styles.panelHeader}>
               <h3 className={styles.panelTitle}>Biblioteca de Mídia</h3>
+              <button
+                type="button"
+                className={`${styles.relinkFolderBtn} ${
+                  offlineAssetsCount > 0 ? styles.relinkFolderBtnAlert : ''
+                }`}
+                onClick={() => setIsRelinkModalOpen(true)}
+                title="Escanear pasta do computador para reconectar vídeos e áudios do projeto"
+              >
+                <FolderSearch size={13} />
+                <span>
+                  {offlineAssetsCount > 0
+                    ? `Reconectar (${offlineAssetsCount})`
+                    : 'Reconectar Pasta'}
+                </span>
+              </button>
             </div>
 
             {/* Google Drive Stream Direct Card */}

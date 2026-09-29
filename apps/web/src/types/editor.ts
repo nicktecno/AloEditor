@@ -13,6 +13,7 @@ export interface MediaAsset {
   dimensions?: { width: number; height: number };
   size?: number; // bytes
   isDrive?: boolean;
+  isOffline?: boolean;
 }
 
 export interface ClipTransform {

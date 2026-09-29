@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Volume2, Cloud, Plus, Trash2 } from 'lucide-react';
+import { Volume2, Cloud, Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { MediaAsset } from '@/types/editor';
 import { GENERIC_VIDEO_THUMBNAIL, handleThumbnailError } from '@/utils/thumbnailGenerator';
 import styles from './Sidebar.module.css';
@@ -201,12 +201,17 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
           </div>
         )}
 
-        {asset.isDrive && (
+        {asset.isDrive ? (
           <div className={styles.badgeDrive}>
             <Cloud size={10} />
             <span>DRIVE</span>
           </div>
-        )}
+        ) : asset.isOffline ? (
+          <div className={styles.badgeOffline} title="Arquivo offline. Reconecte a pasta para reativar.">
+            <AlertTriangle size={10} />
+            <span>OFFLINE</span>
+          </div>
+        ) : null}
 
         {/* Dynamic Duration / Scrub Timecode Badge */}
         <div

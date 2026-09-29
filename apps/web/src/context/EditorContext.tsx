@@ -24,7 +24,7 @@ import {
   GoogleUserProfile,
   GoogleDriveFile,
 } from '@/services/googleDrive';
-import { GENERIC_VIDEO_THUMBNAIL } from '@/utils/thumbnailGenerator';
+import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail } from '@/utils/thumbnailGenerator';
 
 interface EditorContextType {
   project: Project;
@@ -48,6 +48,11 @@ interface EditorContextType {
   isDrivePickerOpen: boolean;
   isSilenceModalOpen: boolean;
   setIsSilenceModalOpen: (open: boolean) => void;
+  isRelinkModalOpen: boolean;
+  setIsRelinkModalOpen: (open: boolean) => void;
+  relinkAssetsFromFiles: (files: FileList | File[], targetAssetId?: string) => Promise<{ reconnectedCount: number; notFoundCount: number }>;
+  offlineAssetsCount: number;
+  markAssetOffline: (assetId: string) => void;
   removeSilencesFromClip: (
     clipId: string,
     silenceIntervals: Array<{ startInTimeline: number; endInTimeline: number; duration: number }>,
@@ -336,6 +341,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isDrivePickerOpen, setIsDrivePickerOpen] = useState(false);
   const [isSilenceModalOpen, setIsSilenceModalOpen] = useState(false);
+  const [isRelinkModalOpen, setIsRelinkModalOpen] = useState(false);
 
   const animationFrameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(performance.now());
@@ -344,6 +350,58 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     projectRef.current = project;
   }, [project]);
+
+  // Check health of local asset URLs on initial project load/hydration
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    let isCancelled = false;
+
+    const checkLocalAssets = async () => {
+      const localAssets = project.assets.filter((a) => !a.isDrive);
+      if (localAssets.length === 0) return;
+
+      const offlineIds: string[] = [];
+
+      for (const asset of localAssets) {
+        if (!asset.url) {
+          offlineIds.push(asset.id);
+          continue;
+        }
+        if (asset.url.startsWith('blob:')) {
+          try {
+            const res = await fetch(asset.url, { method: 'HEAD' });
+            if (!res.ok) {
+              offlineIds.push(asset.id);
+            }
+          } catch {
+            offlineIds.push(asset.id);
+          }
+        }
+      }
+
+      if (isCancelled || offlineIds.length === 0) return;
+
+      setProject((prev) => {
+        let changed = false;
+        const newAssets = prev.assets.map((a) => {
+          if (offlineIds.includes(a.id) && !a.isOffline) {
+            changed = true;
+            return { ...a, isOffline: true };
+          }
+          return a;
+        });
+        if (!changed) return prev;
+        return { ...prev, assets: newAssets };
+      });
+    };
+
+    checkLocalAssets();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isHydrated, project.id]);
 
   // Helper single clip selected ID
   const selectedClipId = selectedClipIds[0] || null;
@@ -1313,6 +1371,164 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, []);
 
+  // Mark asset as offline (e.g. when video playback throws error or URL expired)
+  const markAssetOffline = useCallback((assetId: string) => {
+    setProject((prev) => {
+      const asset = prev.assets.find((a) => a.id === assetId);
+      if (!asset || asset.isOffline) return prev;
+      return {
+        ...prev,
+        assets: prev.assets.map((a) => (a.id === assetId ? { ...a, isOffline: true } : a)),
+      };
+    });
+  }, []);
+
+  // Relink assets from a folder or list of files (optionally for a specific targetAssetId)
+  const relinkAssetsFromFiles = useCallback(
+    async (files: FileList | File[], targetAssetId?: string): Promise<{ reconnectedCount: number; notFoundCount: number }> => {
+      const filesArray = Array.from(files);
+      if (filesArray.length === 0) {
+        return { reconnectedCount: 0, notFoundCount: 0 };
+      }
+
+      // If targeting a specific asset with a single file (manual pick regardless of name)
+      if (targetAssetId && filesArray.length === 1) {
+        const file = filesArray[0];
+        const freshUrl = URL.createObjectURL(file);
+        let found = false;
+        let matchedAsset: MediaAsset | null = null;
+
+        setProject((prev) => {
+          const updatedAssets = prev.assets.map((asset) => {
+            if (asset.id === targetAssetId) {
+              found = true;
+              matchedAsset = asset;
+              return {
+                ...asset,
+                url: freshUrl,
+                size: file.size,
+                isOffline: false,
+              };
+            }
+            return asset;
+          });
+
+          if (found) {
+            const updatedProj: Project = {
+              ...prev,
+              assets: updatedAssets,
+              updatedAt: new Date().toISOString(),
+            };
+            projectRef.current = updatedProj;
+            try {
+              localStorage.setItem('alo_editor_project', JSON.stringify(updatedProj));
+            } catch {}
+            return updatedProj;
+          }
+          return prev;
+        });
+
+        if (found && matchedAsset) {
+          if ((matchedAsset as MediaAsset).type === 'video') {
+            captureVideoThumbnail(file, 0.5).then((thumb) => {
+              if (thumb && thumb !== GENERIC_VIDEO_THUMBNAIL) {
+                updateAssetThumbnail(targetAssetId, thumb);
+              }
+            });
+          }
+          const totalOfflineRemaining = projectRef.current.assets.filter((a) => !a.isDrive && a.isOffline).length;
+          return { reconnectedCount: 1, notFoundCount: totalOfflineRemaining };
+        }
+      }
+
+      // Build lookup index: exact lower name and base name (without extension)
+      const fileMapExact = new Map<string, File>();
+      const fileMapBase = new Map<string, File>();
+
+      for (const file of filesArray) {
+        const cleanName = file.name.trim();
+        const lowerName = cleanName.toLowerCase();
+        fileMapExact.set(lowerName, file);
+
+        const extIdx = lowerName.lastIndexOf('.');
+        const baseName = extIdx > 0 ? lowerName.substring(0, extIdx) : lowerName;
+        fileMapBase.set(baseName, file);
+      }
+
+      let reconnectedCount = 0;
+      const matchedAssets: Array<{ asset: MediaAsset; file: File }> = [];
+
+      setProject((prev) => {
+        const updatedAssets = prev.assets.map((asset) => {
+          if (asset.isDrive) return asset;
+
+          const cleanName = asset.name.trim();
+          const lowerName = cleanName.toLowerCase();
+          const extIdx = lowerName.lastIndexOf('.');
+          const baseName = extIdx > 0 ? lowerName.substring(0, extIdx) : lowerName;
+
+          const matchedFile = fileMapExact.get(lowerName) || fileMapBase.get(baseName);
+
+          if (matchedFile) {
+            reconnectedCount++;
+            const freshUrl = URL.createObjectURL(matchedFile);
+            matchedAssets.push({ asset, file: matchedFile });
+            return {
+              ...asset,
+              url: freshUrl,
+              size: matchedFile.size,
+              isOffline: false,
+            };
+          }
+
+          return asset;
+        });
+
+        if (reconnectedCount > 0) {
+          const updatedProj: Project = {
+            ...prev,
+            assets: updatedAssets,
+            updatedAt: new Date().toISOString(),
+          };
+          projectRef.current = updatedProj;
+          try {
+            localStorage.setItem('alo_editor_project', JSON.stringify(updatedProj));
+          } catch {}
+          return updatedProj;
+        }
+
+        return prev;
+      });
+
+      // Regenerate video thumbnails asynchronously if reconnected
+      for (const { asset, file } of matchedAssets) {
+        if (asset.type === 'video') {
+          captureVideoThumbnail(file, 0.5, (dur) => {
+            if (dur && dur > 0 && Math.abs(dur - (asset.duration || 0)) > 0.5) {
+              syncMediaDuration(asset.id, dur);
+            }
+          }).then((thumb) => {
+            if (thumb && thumb !== GENERIC_VIDEO_THUMBNAIL) {
+              updateAssetThumbnail(asset.id, thumb);
+            }
+          });
+        }
+      }
+
+      const totalOfflineRemaining = projectRef.current.assets.filter((a) => !a.isDrive && a.isOffline).length;
+
+      return {
+        reconnectedCount,
+        notFoundCount: totalOfflineRemaining,
+      };
+    },
+    [syncMediaDuration, updateAssetThumbnail]
+  );
+
+  const offlineAssetsCount = useMemo(() => {
+    return project.assets.filter((a) => !a.isDrive && a.isOffline).length;
+  }, [project.assets]);
+
   // Start fresh empty project
   const newProject = useCallback(() => {
     const emptyProject: Project = {
@@ -1486,13 +1702,23 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             resolve(false);
             return;
           }
+          const hasLocalAssets = (parsed.assets || []).some((a: MediaAsset) => !a.isDrive);
           const importedProject: Project = {
             ...parsed,
             id: parsed.id || `project_${Date.now()}`,
             name: parsed.name || file.name.replace('.alo.json', '').replace('.json', ''),
             updatedAt: new Date().toISOString(),
+            assets: (parsed.assets || []).map((a: MediaAsset) => {
+              if (!a.isDrive) {
+                return { ...a, isOffline: true };
+              }
+              return a;
+            }),
           };
           loadProject(importedProject);
+          if (hasLocalAssets) {
+            setIsRelinkModalOpen(true);
+          }
           alert(`Projeto "${importedProject.name}" importado e aberto com sucesso!`);
           resolve(true);
         } catch (err: any) {
@@ -1503,7 +1729,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       };
       reader.readAsText(file);
     });
-  }, [loadProject]);
+  }, [loadProject, setIsRelinkModalOpen]);
 
   // List all .alo.json projects in Google Drive
   const loadDriveProjectsList = useCallback(async () => {
@@ -1686,6 +1912,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setIsDrivePickerOpen,
         isSilenceModalOpen,
         setIsSilenceModalOpen,
+        isRelinkModalOpen,
+        setIsRelinkModalOpen,
+        relinkAssetsFromFiles,
+        offlineAssetsCount,
+        markAssetOffline,
         removeSilencesFromClip,
         undo,
         redo,

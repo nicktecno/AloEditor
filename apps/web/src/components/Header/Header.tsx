@@ -15,6 +15,7 @@ import {
   FolderOpen,
   PanelLeft,
   PanelRight,
+  FolderSearch,
 } from 'lucide-react';
 import styles from './Header.module.css';
 
@@ -39,6 +40,9 @@ export const Header: React.FC = () => {
     setIsExportModalOpen,
     setIsShortcutsModalOpen,
     setIsProjectsModalOpen,
+    isRelinkModalOpen,
+    setIsRelinkModalOpen,
+    offlineAssetsCount,
     isSidebarOpen,
     setIsSidebarOpen,
     toggleSidebar,
@@ -201,6 +205,18 @@ export const Header: React.FC = () => {
 
       {/* Right: Google Drive & Export CTA */}
       <div className={styles.rightSection}>
+        {offlineAssetsCount > 0 && (
+          <button
+            type="button"
+            className={styles.relinkAlertBtn}
+            onClick={() => setIsRelinkModalOpen(true)}
+            title={`${offlineAssetsCount} mídia(s) desconectada(s). Clique para apontar a pasta do seu computador e reconectar automaticamente.`}
+          >
+            <FolderSearch size={14} />
+            <span className={styles.relinkAlertText}>Reconectar Mídias ({offlineAssetsCount})</span>
+          </button>
+        )}
+
         <button
           className={styles.driveButton}
           onClick={() => setIsDrivePickerOpen(true)}

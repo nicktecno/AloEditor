@@ -6,6 +6,7 @@ import { getClipTransitionState, getClipAudioVolume } from '@/utils/transitionUt
 import { processFrameBackgroundRemoval } from '@/utils/backgroundRemoval';
 import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail, getMediaDuration, handleThumbnailError } from '@/utils/thumbnailGenerator';
 import { MediaAsset } from '@/types/editor';
+import { AlertTriangle, FolderSearch } from 'lucide-react';
 import styles from './Player.module.css';
 
 const formatTimecode = (seconds: number) => {
@@ -99,6 +100,8 @@ export const PlayerPreview: React.FC = () => {
     addAsset,
     updateAssetThumbnail,
     setInspectorTab,
+    setIsRelinkModalOpen,
+    markAssetOffline,
   } = useEditor();
 
   const [isBuffering, setIsBuffering] = React.useState(false);
@@ -567,7 +570,12 @@ export const PlayerPreview: React.FC = () => {
                 onCanPlay={handleCanPlay}
                 onPlaying={handleCanPlay}
                 onSeeked={handleCanPlay}
-                onError={handleCanPlay}
+                onError={() => {
+                  handleCanPlay();
+                  if (mainAsset && !mainAsset.isDrive) {
+                    markAssetOffline(mainAsset.id);
+                  }
+                }}
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
                   if (v && v.duration && !isNaN(v.duration) && isFinite(v.duration) && v.duration > 0) {
@@ -599,10 +607,29 @@ export const PlayerPreview: React.FC = () => {
             )}
 
             {/* Quality status badge while loading / optimizing */}
-            {(!isVideoReady || isBuffering) && (
+            {(!isVideoReady || isBuffering) && !mainAsset?.isOffline && (
               <div className={styles.proxyQualityBadge}>
                 <div className={styles.proxyQualityDot} />
                 <span>Pré-visualização • Carregando reprodução otimizada...</span>
+              </div>
+            )}
+
+            {/* Offline media overlay if asset file is missing on this machine */}
+            {mainAsset && mainAsset.isOffline && (
+              <div className={styles.offlineMediaOverlay}>
+                <AlertTriangle size={36} color="#f59e0b" />
+                <span className={styles.offlineTitle}>Mídia Offline</span>
+                <span className={styles.offlineDesc}>
+                  O arquivo original &quot;{mainAsset.name}&quot; não foi encontrado nesta sessão.
+                </span>
+                <button
+                  type="button"
+                  className={styles.offlineRelinkBtn}
+                  onClick={() => setIsRelinkModalOpen(true)}
+                >
+                  <FolderSearch size={15} />
+                  <span>Reconectar Pasta do Projeto</span>
+                </button>
               </div>
             )}
           </>
@@ -647,7 +674,12 @@ export const PlayerPreview: React.FC = () => {
                 onWaiting={handleWaiting}
                 onCanPlay={handleCanPlay}
                 onPlaying={handleCanPlay}
-                onError={handleCanPlay}
+                onError={() => {
+                  handleCanPlay();
+                  if (overlayAsset && !overlayAsset.isDrive) {
+                    markAssetOffline(overlayAsset.id);
+                  }
+                }}
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
                   if (v && v.duration && !isNaN(v.duration) && isFinite(v.duration) && v.duration > 0) {

@@ -106,6 +106,39 @@
   color: var(--text-primary);
 }
 
+.relinkFolderBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--ease-fast);
+}
+
+.relinkFolderBtn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-cyan);
+  color: var(--text-primary);
+}
+
+.relinkFolderBtnAlert {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #fbbf24;
+  animation: pulseAmber 2.5s infinite;
+}
+
+.relinkFolderBtnAlert:hover {
+  background: rgba(245, 158, 11, 0.28);
+  border-color: #f59e0b;
+}
+
 /* Google Drive Banner */
 .driveBanner {
   background: linear-gradient(135deg, rgba(130, 87, 229, 0.16) 0%, rgba(4, 211, 97, 0.12) 100%);
@@ -352,6 +385,25 @@
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.badgeOffline {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(239, 68, 68, 0.92);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(254, 202, 202, 0.4);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
 }
 
 .durationBadge {
