@@ -91,6 +91,7 @@ export const PlayerPreview: React.FC = () => {
   const {
     project,
     currentTime,
+    setCurrentTime,
     isPlaying,
     selectedClipIds,
     selectClip,
@@ -183,6 +184,50 @@ export const PlayerPreview: React.FC = () => {
 
   const lastMainClipIdRef = useRef<string | null>(null);
   const lastOverlayClipIdRef = useRef<string | null>(null);
+  const isVideoDrivingTimelineRef = useRef<boolean>(false);
+
+  // Drive timeline smoothly from main video playback without decoder resets
+  useEffect(() => {
+    if (!isPlaying || !activeMainClip || !mainVideoRef.current) return;
+
+    let animId: number;
+    let videoFrameCallbackId: number | null = null;
+    const vid = mainVideoRef.current;
+
+    const onFrame = () => {
+      if (vid && !vid.paused && vid.readyState >= 2) {
+        const vTime = vid.currentTime;
+        const timelineTime = activeMainClip.startInTimeline + (vTime - activeMainClip.trimStart) / activeMainClip.speed;
+
+        if (timelineTime >= activeMainClip.startInTimeline + activeMainClip.duration) {
+          setCurrentTime(activeMainClip.startInTimeline + activeMainClip.duration);
+          return;
+        }
+
+        isVideoDrivingTimelineRef.current = true;
+        setCurrentTime(timelineTime);
+      }
+
+      if ('requestVideoFrameCallback' in vid && typeof (vid as any).requestVideoFrameCallback === 'function') {
+        videoFrameCallbackId = (vid as any).requestVideoFrameCallback(onFrame);
+      } else {
+        animId = requestAnimationFrame(onFrame);
+      }
+    };
+
+    if ('requestVideoFrameCallback' in vid && typeof (vid as any).requestVideoFrameCallback === 'function') {
+      videoFrameCallbackId = (vid as any).requestVideoFrameCallback(onFrame);
+    } else {
+      animId = requestAnimationFrame(onFrame);
+    }
+
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+      if (videoFrameCallbackId !== null && 'cancelVideoFrameCallback' in vid) {
+        (vid as any).cancelVideoFrameCallback(videoFrameCallbackId);
+      }
+    };
+  }, [isPlaying, activeMainClip?.id, activeMainClip?.startInTimeline, activeMainClip?.trimStart, activeMainClip?.speed, activeMainClip?.duration, setCurrentTime]);
 
   // Sync main video playback time & state & audio volume
   useEffect(() => {
@@ -214,9 +259,14 @@ export const PlayerPreview: React.FC = () => {
         mainVideoRef.current.pause();
       }
     } else {
-      // While playing: only hard seek on clip switch or significant user scrub (> 1.2s), preventing mobile decoder stalls
-      if (isClipSwitch || Math.abs(mainVideoRef.current.currentTime - mediaOffset) > 1.2) {
-        mainVideoRef.current.currentTime = mediaOffset;
+      // While playing: if timeline was advanced by the video element, DO NOT seek (prevents buffer cancellation)
+      if (isVideoDrivingTimelineRef.current) {
+        isVideoDrivingTimelineRef.current = false;
+      } else {
+        // Only seek if switching clips or user clicked/scrubbed far away (> 2.0s jump)
+        if (isClipSwitch || Math.abs(mainVideoRef.current.currentTime - mediaOffset) > 2.0) {
+          mainVideoRef.current.currentTime = mediaOffset;
+        }
       }
       if (mainVideoRef.current.paused) {
         mainVideoRef.current.play().catch(() => {});
@@ -523,7 +573,7 @@ export const PlayerPreview: React.FC = () => {
         {/* Main Video or Image Layer */}
         {activeMainClip && mainAsset ? (
           <>
-            {/* Low-Quality Proxy / Poster Underlay Layer (Always visible, eliminates black screen while loading) */}
+            {/* Low-Quality Proxy / Poster Underlay Layer (Behind video, never black screen) */}
             <div
               className={styles.proxyUnderlayLayer}
               style={{
@@ -538,9 +588,6 @@ export const PlayerPreview: React.FC = () => {
                 className={styles.proxyUnderlayImg}
                 onError={handleThumbnailError}
               />
-              {(!isVideoReady || isBuffering) && (
-                <div className={styles.lowQualityBlurOverlay} />
-              )}
             </div>
 
             {mainAsset.type === 'image' || activeMainClip.type === 'image' ? (
@@ -565,11 +612,20 @@ export const PlayerPreview: React.FC = () => {
                 preload="auto"
                 poster={mainAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
                 muted={activeMainClip.isMuted}
-                onLoadStart={() => setIsVideoReady(false)}
                 onWaiting={handleWaiting}
                 onCanPlay={handleCanPlay}
                 onPlaying={handleCanPlay}
                 onSeeked={handleCanPlay}
+                onTimeUpdate={(e) => {
+                  if (!isPlaying || !activeMainClip) return;
+                  const v = e.currentTarget;
+                  if (v.paused) return;
+                  const timelineTime = activeMainClip.startInTimeline + (v.currentTime - activeMainClip.trimStart) / activeMainClip.speed;
+                  if (timelineTime >= activeMainClip.startInTimeline && timelineTime <= activeMainClip.startInTimeline + activeMainClip.duration) {
+                    isVideoDrivingTimelineRef.current = true;
+                    setCurrentTime(timelineTime);
+                  }
+                }}
                 onError={() => {
                   handleCanPlay();
                   if (mainAsset && !mainAsset.isDrive) {
@@ -585,8 +641,7 @@ export const PlayerPreview: React.FC = () => {
                 style={{
                   display: activeMainClip.backgroundRemoval?.enabled ? 'none' : 'block',
                   transform: `translate(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
-                  opacity: isVideoReady ? (mainTrans?.opacity ?? 1) : 0,
-                  transition: 'opacity 0.25s ease',
+                  opacity: mainTrans?.opacity ?? 1,
                   filter: mainTrans?.filterString || undefined,
                   zIndex: 2,
                 }}
@@ -604,14 +659,6 @@ export const PlayerPreview: React.FC = () => {
                   zIndex: 3,
                 }}
               />
-            )}
-
-            {/* Quality status badge while loading / optimizing */}
-            {(!isVideoReady || isBuffering) && !mainAsset?.isOffline && (
-              <div className={styles.proxyQualityBadge}>
-                <div className={styles.proxyQualityDot} />
-                <span>Pré-visualização • Carregando reprodução otimizada...</span>
-              </div>
             )}
 
             {/* Offline media overlay if asset file is missing on this machine */}

@@ -651,9 +651,16 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [selectedClip?.type, selectedClip?.id]);
 
+  const currentTimeRef = useRef(0);
+
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+
   // Set current time safely
   const setCurrentTime = useCallback((time: number) => {
     const clamped = Math.max(0, Math.min(project.duration, time));
+    currentTimeRef.current = clamped;
     setCurrentTimeState(clamped);
   }, [project.duration]);
 
@@ -675,18 +682,31 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const loop = (time: number) => {
       const rawDelta = (time - lastTimeRef.current) / 1000;
-      // Clamp delta to at most 0.08s (80ms) to avoid large time jumps on mobile frame drops or tab throttling
+      // Clamp delta to at most 0.08s (80ms) to avoid large time jumps on frame drops or throttling
       const delta = Math.min(0.08, Math.max(0, rawDelta));
       lastTimeRef.current = time;
 
-      setCurrentTimeState((prev) => {
-        const nextTime = prev + delta;
-        if (nextTime >= project.duration) {
+      const curTime = currentTimeRef.current;
+      const hasActiveVideoClip = projectRef.current.clips.some(
+        (c) =>
+          c.trackId === 'track_video_main' &&
+          curTime >= c.startInTimeline &&
+          curTime < c.startInTimeline + c.duration
+      );
+
+      // If an active main video clip is on the timeline, the HTML5 video element itself in PlayerPreview
+      // drives playback time smoothly with hardware decoding.
+      // If no video clip is active (gap, text-only, or audio-only), the timer loop advances smoothly:
+      if (!hasActiveVideoClip) {
+        const nextTime = curTime + delta;
+        if (nextTime >= projectRef.current.duration) {
           setIsPlaying(false);
-          return 0;
+          setCurrentTime(0);
+          return;
+        } else {
+          setCurrentTime(nextTime);
         }
-        return nextTime;
-      });
+      }
 
       animationFrameRef.current = requestAnimationFrame(loop);
     };
@@ -698,7 +718,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isPlaying, project.duration]);
+  }, [isPlaying, setCurrentTime]);
 
   // Update project name
   const updateProjectName = useCallback((name: string) => {
