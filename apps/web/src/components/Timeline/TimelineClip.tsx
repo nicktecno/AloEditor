@@ -168,7 +168,10 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     const startX = e.clientX;
     const initialStart = clip.startInTimeline;
     const initialDuration = clip.duration;
-    const initialTrimStart = clip.trimStart;
+    const initialTrimStart = clip.trimStart || 0;
+    const speed = clip.speed || 1.0;
+    const isBoundedMedia = (clip.type === 'video' || clip.type === 'audio') && !!asset?.duration;
+    const assetMaxDuration = asset?.duration || 999999;
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX;
@@ -176,29 +179,45 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
 
       // Minimum duration 0.2s
       const maxDelta = initialDuration - 0.2;
-      const clampedDelta = Math.min(maxDelta, deltaTime);
+      // Não pode expandir para antes de 0:00 na timeline, nem antes do início (0:00) do arquivo de vídeo/áudio
+      const minDelta = isBoundedMedia
+        ? Math.max(-initialStart, -initialTrimStart / speed)
+        : -initialStart;
+
+      let clampedDelta = Math.max(minDelta, Math.min(maxDelta, deltaTime));
 
       let newStart = Math.max(0, initialStart + clampedDelta);
       let newDuration = Math.max(0.2, initialDuration - clampedDelta);
-      let newTrimStart = Math.max(0, initialTrimStart + clampedDelta);
+      let newTrimStart = Math.max(0, initialTrimStart + clampedDelta * speed);
 
       // Snap to playhead
       if (isSnappingEnabled && Math.abs(newStart - currentTime) <= 20 / zoom) {
         const snapDelta = currentTime - initialStart;
-        if (snapDelta <= maxDelta) {
+        if (snapDelta >= minDelta && snapDelta <= maxDelta) {
           newStart = currentTime;
+          clampedDelta = snapDelta;
           newDuration = Math.max(0.2, initialDuration - snapDelta);
-          newTrimStart = Math.max(0, initialTrimStart + snapDelta);
+          newTrimStart = Math.max(0, initialTrimStart + snapDelta * speed);
           setSnapGuideTime(currentTime);
         }
       } else {
         setSnapGuideTime(null);
       }
 
+      // Impede ultrapassar a duração total original da mídia
+      if (isBoundedMedia && newTrimStart + newDuration * speed > assetMaxDuration) {
+        newDuration = Math.max(0.2, (assetMaxDuration - newTrimStart) / speed);
+      }
+
+      const calculatedTrimEnd = isBoundedMedia
+        ? Math.min(assetMaxDuration, newTrimStart + newDuration * speed)
+        : newTrimStart + newDuration * speed;
+
       updateClip(clip.id, {
         startInTimeline: parseFloat(newStart.toFixed(3)),
         duration: parseFloat(newDuration.toFixed(3)),
         trimStart: parseFloat(newTrimStart.toFixed(3)),
+        trimEnd: parseFloat(calculatedTrimEnd.toFixed(3)),
       });
     };
 
@@ -221,23 +240,38 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
 
     const startX = e.clientX;
     const initialDuration = clip.duration;
+    const trimStart = clip.trimStart || 0;
+    const speed = clip.speed || 1.0;
+    const isBoundedMedia = (clip.type === 'video' || clip.type === 'audio') && !!asset?.duration;
+    const assetMaxDuration = asset?.duration || 999999;
+    // Duração máxima permitida na timeline considerando o início do corte e a velocidade
+    const maxAllowedDuration = isBoundedMedia
+      ? Math.max(0.2, (assetMaxDuration - trimStart) / speed)
+      : 999999;
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const deltaTime = deltaX / zoom;
-      let newDuration = Math.max(0.2, initialDuration + deltaTime);
+      let newDuration = Math.min(maxAllowedDuration, Math.max(0.2, initialDuration + deltaTime));
 
       const targetEnd = clip.startInTimeline + newDuration;
       if (isSnappingEnabled && Math.abs(targetEnd - currentTime) <= 20 / zoom) {
-        newDuration = Math.max(0.2, currentTime - clip.startInTimeline);
-        setSnapGuideTime(currentTime);
+        const candidateDuration = currentTime - clip.startInTimeline;
+        if (candidateDuration >= 0.2 && candidateDuration <= maxAllowedDuration) {
+          newDuration = candidateDuration;
+          setSnapGuideTime(currentTime);
+        } else {
+          setSnapGuideTime(null);
+        }
       } else {
         setSnapGuideTime(null);
       }
 
+      const calculatedTrimEnd = Math.min(assetMaxDuration, trimStart + newDuration * speed);
+
       updateClip(clip.id, {
         duration: parseFloat(newDuration.toFixed(3)),
-        trimEnd: parseFloat((clip.trimStart + newDuration).toFixed(3)),
+        trimEnd: parseFloat(calculatedTrimEnd.toFixed(3)),
       });
     };
 

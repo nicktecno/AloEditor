@@ -1084,12 +1084,32 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setProject((prev) => {
       const updatedClips = prev.clips.map((clip) => {
         if (clip.id !== clipId) return clip;
+        const asset = prev.assets.find((a) => a.id === clip.assetId);
+        const finalUpdates = { ...updates };
+
+        // Impede que vídeos ou áudios sejam estendidos além da duração original da mídia
+        if (asset && (clip.type === 'video' || clip.type === 'audio') && asset.duration > 0) {
+          const speed = finalUpdates.speed ?? clip.speed ?? 1.0;
+          let trimStart = finalUpdates.trimStart ?? clip.trimStart ?? 0;
+          trimStart = Math.max(0, Math.min(Math.max(0, asset.duration - 0.2), trimStart));
+          finalUpdates.trimStart = trimStart;
+
+          if (finalUpdates.duration !== undefined) {
+            const maxDuration = Math.max(0.2, (asset.duration - trimStart) / speed);
+            finalUpdates.duration = Math.min(maxDuration, Math.max(0.2, finalUpdates.duration));
+          }
+
+          if (finalUpdates.trimEnd !== undefined) {
+            finalUpdates.trimEnd = Math.min(asset.duration, Math.max(trimStart + 0.2, finalUpdates.trimEnd));
+          }
+        }
+
         return {
           ...clip,
-          ...updates,
-          transform: updates.transform ? { ...clip.transform, ...updates.transform } : clip.transform,
-          filters: updates.filters ? { ...clip.filters, ...updates.filters } : clip.filters,
-          textStyle: updates.textStyle ? { ...clip.textStyle, ...updates.textStyle } as any : clip.textStyle,
+          ...finalUpdates,
+          transform: finalUpdates.transform ? { ...clip.transform, ...finalUpdates.transform } : clip.transform,
+          filters: finalUpdates.filters ? { ...clip.filters, ...finalUpdates.filters } : clip.filters,
+          textStyle: finalUpdates.textStyle ? { ...clip.textStyle, ...finalUpdates.textStyle } as any : clip.textStyle,
         };
       });
 
