@@ -27,6 +27,8 @@ import { EFFECT_PRESETS, TRANSITION_PRESETS } from '@/utils/transitionUtils';
 import { TimelineClip, TransitionType } from '@/types/editor';
 import { BackgroundRemoverPanel } from './BackgroundRemoverPanel';
 import { Wand2 } from 'lucide-react';
+import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail, handleThumbnailError, getMediaDuration } from '@/utils/thumbnailGenerator';
+import { MediaAssetCard } from './MediaAssetCard';
 import styles from './Sidebar.module.css';
 
 export const MediaPanel: React.FC = () => {
@@ -42,6 +44,8 @@ export const MediaPanel: React.FC = () => {
     addClipToTrack,
     addTextClip,
     addAsset,
+    updateAssetThumbnail,
+    syncMediaDuration,
     setIsDrivePickerOpen,
     openGooglePicker,
     googleAccessToken,
@@ -56,7 +60,38 @@ export const MediaPanel: React.FC = () => {
   const [transitionTarget, setTransitionTarget] = useState<'in' | 'out' | 'both'>('in');
   const [transitionDuration, setTransitionDuration] = useState<number>(0.5);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  const [isUrlInputOpen, setIsUrlInputOpen] = useState<boolean>(false);
+  const [driveUrlInput, setDriveUrlInput] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleImportDriveUrl = () => {
+    const input = driveUrlInput.trim();
+    if (!input) return;
+
+    const match = input.match(/[-\w]{25,}/);
+    if (!match) {
+      showFeedback('Link inválido. Insira um link válido do Google Drive.');
+      return;
+    }
+
+    const fileId = match[0];
+    const newAsset: MediaAsset = {
+      id: `asset_drive_${fileId}_${Date.now()}`,
+      name: `Drive_Video_${fileId.substring(0, 6)}.mp4`,
+      type: 'video',
+      url: `/api/drive/stream?fileId=${fileId}&token=${googleAccessToken || ''}`,
+      driveFileId: fileId,
+      duration: 15.0,
+      isDrive: true,
+      thumbnailUrl: 'https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&auto=format&fit=crop&q=60',
+    };
+
+    addAsset(newAsset);
+    addClipToTrack(newAsset);
+    setDriveUrlInput('');
+    setIsUrlInputOpen(false);
+    showFeedback('Vídeo do Google Drive importado com sucesso!');
+  };
 
   const showFeedback = (msg: string) => {
     setFeedbackMsg(msg);
@@ -151,7 +186,7 @@ export const MediaPanel: React.FC = () => {
     return true;
   });
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -160,20 +195,41 @@ export const MediaPanel: React.FC = () => {
       const url = URL.createObjectURL(file);
       const isVideo = file.type.startsWith('video');
       const isAudio = file.type.startsWith('audio');
+      const assetId = `asset_upload_${Date.now()}_${i}`;
+
+      let detectedDuration = 10.0;
+      if (isVideo || isAudio) {
+        try {
+          detectedDuration = await getMediaDuration(file, isAudio);
+        } catch (err) {
+          console.warn('Could not determine media duration:', err);
+        }
+      }
 
       const newAsset: MediaAsset = {
-        id: `asset_upload_${Date.now()}_${i}`,
+        id: assetId,
         name: file.name,
         type: isVideo ? 'video' : isAudio ? 'audio' : 'image',
         url,
-        duration: 10.0,
+        duration: detectedDuration,
         size: file.size,
-        thumbnailUrl: isVideo
-          ? 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=320&auto=format&fit=crop&q=60'
-          : undefined,
+        thumbnailUrl: isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined,
       };
 
       addAsset(newAsset);
+
+      // Asynchronously capture real frame thumbnail from video file
+      if (isVideo) {
+        captureVideoThumbnail(file, 0.5, (dur) => {
+          if (dur && dur > 0 && Math.abs(dur - detectedDuration) > 0.5) {
+            syncMediaDuration(assetId, dur);
+          }
+        }).then((captured) => {
+          if (captured && captured !== GENERIC_VIDEO_THUMBNAIL) {
+            updateAssetThumbnail(assetId, captured);
+          }
+        });
+      }
     }
   };
 
@@ -187,7 +243,7 @@ export const MediaPanel: React.FC = () => {
       driveFileId: file.id,
       duration: file.durationSeconds || 15.0,
       isDrive: true,
-      thumbnailUrl: file.thumbnailUrl,
+      thumbnailUrl: file.thumbnailUrl || (file.mimeType.startsWith('audio') ? undefined : GENERIC_VIDEO_THUMBNAIL),
       size: file.sizeBytes,
     };
     addAsset(newAsset);
@@ -294,13 +350,44 @@ export const MediaPanel: React.FC = () => {
               <p className={styles.driveBannerText}>
                 Importe e assista aos seus vídeos em tempo real direto da nuvem via Range Requests, sem baixar para o HD.
               </p>
-              <button
-                className={styles.pickerTriggerBtn}
-                onClick={() => setIsDrivePickerOpen(true)}
-              >
-                <FolderOpen size={14} />
-                <span>Selecionar do Drive (Picker)</span>
-              </button>
+              <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                <button
+                  className={styles.pickerTriggerBtn}
+                  style={{ flex: 1 }}
+                  onClick={() => setIsDrivePickerOpen(true)}
+                >
+                  <FolderOpen size={14} />
+                  <span>Navegar no Drive</span>
+                </button>
+                <button
+                  className={styles.pickerTriggerBtn}
+                  style={{ flex: 1, borderColor: isUrlInputOpen ? 'var(--accent-cyan)' : undefined }}
+                  onClick={() => setIsUrlInputOpen((prev) => !prev)}
+                >
+                  <span>🔗 Colar Link</span>
+                </button>
+              </div>
+
+              {isUrlInputOpen && (
+                <div className={styles.driveUrlInputRow}>
+                  <input
+                    type="text"
+                    className={styles.driveUrlInput}
+                    placeholder="Cole o link do Google Drive aqui..."
+                    value={driveUrlInput}
+                    onChange={(e) => setDriveUrlInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleImportDriveUrl();
+                    }}
+                  />
+                  <button
+                    className={styles.driveUrlConfirmBtn}
+                    onClick={handleImportDriveUrl}
+                  >
+                    Importar
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Upload Zone */}
@@ -315,9 +402,19 @@ export const MediaPanel: React.FC = () => {
             <div
               className={styles.uploadDropzone}
               onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  const mockEvent = {
+                    target: { files: e.dataTransfer.files },
+                  } as unknown as React.ChangeEvent<HTMLInputElement>;
+                  handleFileUpload(mockEvent);
+                }
+              }}
             >
               <Upload size={18} color="var(--accent-cyan)" />
-              <span className={styles.dropzoneText}>Clique para carregar mídia local</span>
+              <span className={styles.dropzoneText}>Clique ou arraste mídia aqui</span>
               <span className={styles.dropzoneSub}>MP4, MOV, WebM, MP3, WAV</span>
             </div>
 
@@ -352,58 +449,11 @@ export const MediaPanel: React.FC = () => {
             {/* Asset Cards Grid */}
             <div className={styles.assetGrid}>
               {filteredAssets.map((asset) => (
-                <div
+                <MediaAssetCard
                   key={asset.id}
-                  className={styles.assetCard}
-                  draggable={true}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('application/json', JSON.stringify(asset));
-                    e.dataTransfer.effectAllowed = 'copy';
-                  }}
-                  onClick={() => addClipToTrack(asset)}
-                  title="Clique ou arraste diretamente para a linha do tempo"
-                >
-                  <div className={styles.thumbnailWrapper}>
-                    {asset.type === 'video' ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={asset.thumbnailUrl || 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=320&auto=format&fit=crop&q=60'}
-                        alt={asset.name}
-                        className={styles.thumbnailImg}
-                      />
-                    ) : (
-                      <div className={styles.audioPlaceholder}>
-                        <Volume2 size={24} />
-                      </div>
-                    )}
-
-                    {asset.isDrive && (
-                      <div className={styles.badgeDrive}>
-                        <Cloud size={10} />
-                        <span>DRIVE</span>
-                      </div>
-                    )}
-
-                    <div className={styles.durationBadge}>
-                      {asset.duration.toFixed(1)}s
-                    </div>
-
-                    <div className={styles.addOverlayBtn}>
-                      <div className={styles.addBtnCircle} title="Adicionar à Linha do Tempo">
-                        <Plus size={18} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={styles.assetInfo}>
-                    <span className={styles.assetName} title={asset.name}>
-                      {asset.name}
-                    </span>
-                    <span className={styles.assetMeta}>
-                      {asset.type.toUpperCase()} • {((asset.size || 0) / (1024 * 1024)).toFixed(1)} MB
-                    </span>
-                  </div>
-                </div>
+                  asset={asset}
+                  onAdd={addClipToTrack}
+                />
               ))}
 
               {/* Show cached Drive files directly if Drive filter is active */}
@@ -419,50 +469,16 @@ export const MediaPanel: React.FC = () => {
                       driveFileId: dv.id,
                       duration: dv.durationSeconds || 15.0,
                       isDrive: true,
-                      thumbnailUrl: dv.thumbnailUrl,
+                      thumbnailUrl: dv.thumbnailUrl || (dv.mimeType.startsWith('audio') ? undefined : GENERIC_VIDEO_THUMBNAIL),
                       size: dv.sizeBytes,
                     };
                     return (
-                      <div
+                      <MediaAssetCard
                         key={dv.id}
-                        className={styles.assetCard}
-                        draggable={true}
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData('application/json', JSON.stringify(virtualAsset));
-                          e.dataTransfer.effectAllowed = 'copy';
-                        }}
-                        onClick={() => handleSelectDriveFile(dv)}
-                        title="Arquivo do Google Drive: Clique ou arraste para a linha do tempo"
-                      >
-                        <div className={styles.thumbnailWrapper}>
-                          {dv.thumbnailUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={dv.thumbnailUrl} alt={dv.name} className={styles.thumbnailImg} />
-                          ) : (
-                            <div className={styles.audioPlaceholder}>
-                              <Film size={24} />
-                            </div>
-                          )}
-                          <div className={styles.badgeDrive}>
-                            <Cloud size={10} />
-                            <span>DRIVE</span>
-                          </div>
-                          <div className={styles.durationBadge}>{virtualAsset.duration.toFixed(1)}s</div>
-                          <div className={styles.addOverlayBtn}>
-                            <div className={styles.addBtnCircle} title="Adicionar à Linha do Tempo">
-                              <Plus size={18} />
-                            </div>
-                          </div>
-                        </div>
-                        <div className={styles.assetInfo}>
-                          <span className={styles.assetName} title={dv.name}>
-                            {dv.name}
-                          </span>
-                          <span className={styles.assetMeta}>
-                            DRIVE • {((dv.sizeBytes || 0) / (1024 * 1024)).toFixed(1)} MB
-                          </span>
-                        </div>
-                      </div>
+                        asset={virtualAsset}
+                        onAdd={() => handleSelectDriveFile(dv)}
+                        title="Arquivo do Google Drive: Passe o mouse para pré-visualizar • Clique ou arraste para a linha do tempo"
+                      />
                     );
                   })}
             </div>

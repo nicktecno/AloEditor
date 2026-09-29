@@ -2,7 +2,9 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
+  max-width: 100vw;
   background-color: var(--bg-app);
   overflow: hidden;
 }
@@ -68,9 +70,11 @@
 .mainWorkspace {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
   overflow: hidden;
   position: relative;
+  width: 100%;
 }
 
 .centerColumn {

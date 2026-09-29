@@ -1,19 +1,23 @@
 .header {
-  height: 64px;
+  height: clamp(52px, 5.5vh, 64px);
   background-color: var(--bg-panel);
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
-  gap: 20px;
+  padding: 0 clamp(8px, 1.5vw, 20px);
+  gap: clamp(6px, 1.2vw, 16px);
   z-index: 40;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .leftSection {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: clamp(6px, 1vw, 14px);
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .logoBadge {
@@ -78,10 +82,13 @@
   border: 1px solid transparent;
   color: var(--text-primary);
   font-weight: 600;
-  font-size: 15px;
-  padding: 7px 12px;
+  font-size: 14px;
+  padding: 6px 10px;
   border-radius: var(--radius-sm);
-  max-width: 280px;
+  max-width: 220px;
+  min-width: 70px;
+  flex-shrink: 1;
+  text-overflow: ellipsis;
 }
 
 .projectNameInput:hover {
@@ -118,7 +125,9 @@
 .centerSection {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: clamp(4px, 0.8vw, 10px);
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .ratioSelector {
@@ -176,7 +185,9 @@
 .rightSection {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: clamp(6px, 1vw, 10px);
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .driveButton {
@@ -267,23 +278,27 @@
    Responsive Breakpoints for Header
    ========================================================================== */
 
-@media (max-width: 1280px) {
+@media (max-width: 1440px) {
   .tagAloTio,
   .tagCloud {
     display: none;
   }
 
-  .header {
-    padding: 0 16px;
-    gap: 12px;
+  .btnText {
+    display: none;
   }
 
   .projectNameInput {
-    max-width: 200px;
+    max-width: 160px;
   }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1280px) {
+  .header {
+    padding: 0 12px;
+    gap: 8px;
+  }
+
   .saveIndicator span:last-child {
     display: none;
   }
@@ -296,16 +311,47 @@
     padding: 6px 10px;
   }
 
-  .projectNameInput {
-    max-width: 150px;
-  }
-
-  .saveBtn span {
+  .saveBtnText {
     display: none;
   }
 
   .saveBtn {
     padding: 8px 10px;
+  }
+
+  .driveBtnText {
+    display: none;
+  }
+
+  .driveButton {
+    padding: 8px 10px;
+  }
+
+  .projectNameInput {
+    max-width: 120px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .divider {
+    display: none;
+  }
+
+  .projectNameInput {
+    max-width: 95px;
+    min-width: 55px;
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+
+  .exportBtn {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .ratioSelect {
+    max-width: 110px;
+    font-size: 12px;
   }
 }
 
@@ -365,7 +411,8 @@
   }
 
   .historyGroup {
-    display: none !important;
+    display: flex;
+    flex-shrink: 0;
   }
 
   .ratioSelector {

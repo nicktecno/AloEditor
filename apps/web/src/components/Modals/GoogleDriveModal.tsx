@@ -19,6 +19,7 @@ import {
   Plus,
   Film,
 } from 'lucide-react';
+import { GENERIC_VIDEO_THUMBNAIL, handleThumbnailError } from '@/utils/thumbnailGenerator';
 import styles from './Modal.module.css';
 
 export const GoogleDriveModal: React.FC = () => {
@@ -70,7 +71,7 @@ export const GoogleDriveModal: React.FC = () => {
       driveFileId: file.id,
       duration: file.durationSeconds || 15.0,
       isDrive: true,
-      thumbnailUrl: file.thumbnailUrl,
+      thumbnailUrl: file.thumbnailUrl || (file.mimeType.startsWith('audio') ? undefined : GENERIC_VIDEO_THUMBNAIL),
       size: file.sizeBytes,
     };
 
@@ -235,18 +236,13 @@ export const GoogleDriveModal: React.FC = () => {
                           onClick={() => handleSelectVideo(video)}
                           title="Clique para adicionar à linha do tempo"
                         >
-                          {video.thumbnailUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={video.thumbnailUrl}
-                              alt={video.name}
-                              className={styles.driveThumb}
-                            />
-                          ) : (
-                            <div className={styles.driveThumb} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1e293b' }}>
-                              <Film size={20} color="var(--accent-cyan)" />
-                            </div>
-                          )}
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={video.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
+                            alt={video.name}
+                            className={styles.driveThumb}
+                            onError={handleThumbnailError}
+                          />
                           <div className={styles.driveFileInfo}>
                             <span className={styles.driveFileName} title={video.name}>
                               {video.name}

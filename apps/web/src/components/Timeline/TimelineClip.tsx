@@ -4,6 +4,7 @@ import React, { useRef, useState } from 'react';
 import { useEditor } from '@/context/EditorContext';
 import { TimelineClip as ITimelineClip } from '@/types/editor';
 import { Film, Type, Music, Layers, VolumeX, Volume2 } from 'lucide-react';
+import { GENERIC_VIDEO_THUMBNAIL, handleThumbnailError } from '@/utils/thumbnailGenerator';
 import styles from './Timeline.module.css';
 
 interface TimelineClipProps {
@@ -22,6 +23,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     setSnapGuideTime,
   } = useEditor();
 
+  const asset = project.assets.find((a) => a.id === clip.assetId);
   const isSelected = selectedClipIds.includes(clip.id);
   const leftPos = clip.startInTimeline * zoom;
   const widthPos = Math.max(clip.duration * zoom, 36);
@@ -289,10 +291,18 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
 
       {/* Clip Content & Icon */}
       <div className={styles.clipBody}>
-        {isOverlay ? (
+        {clip.type === 'video' ? (
+          <div className={styles.clipThumbPreview} title={clip.name}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={asset?.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
+              alt=""
+              className={styles.clipThumbImg}
+              onError={handleThumbnailError}
+            />
+          </div>
+        ) : isOverlay ? (
           <Layers size={14} color="#fbbf24" style={{ flexShrink: 0 }} />
-        ) : clip.type === 'video' ? (
-          <Film size={14} style={{ flexShrink: 0 }} />
         ) : clip.type === 'text' ? (
           <Type size={14} style={{ flexShrink: 0 }} />
         ) : (

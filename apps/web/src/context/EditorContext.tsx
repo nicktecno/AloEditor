@@ -24,6 +24,7 @@ import {
   GoogleUserProfile,
   GoogleDriveFile,
 } from '@/services/googleDrive';
+import { GENERIC_VIDEO_THUMBNAIL } from '@/utils/thumbnailGenerator';
 
 interface EditorContextType {
   project: Project;
@@ -109,6 +110,8 @@ interface EditorContextType {
   duplicateClip: (clipId: string) => void;
   detachAudioFromClip: (clipId: string) => void;
   addAsset: (asset: MediaAsset) => void;
+  updateAssetThumbnail: (assetId: string, thumbnailUrl: string) => void;
+  syncMediaDuration: (assetId: string, realDuration: number) => void;
   saveProjectToDrive: () => Promise<void>;
   setIsExportModalOpen: (open: boolean) => void;
   setIsShortcutsModalOpen: (open: boolean) => void;
@@ -465,38 +468,108 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     sessionStorage.removeItem('alo_drive_videos_cache');
   }, []);
 
-  // Push state to history
+  const MAX_UNDO_LIMIT = 25; // Até no máximo 25 ações de reversão
+  const MAX_HISTORY_STATES = MAX_UNDO_LIMIT + 1; // 26 estados (1 base + até 25 ações revertíveis)
+
+  const historyRef = useRef<Project[]>([INITIAL_PROJECT]);
+  const historyIndexRef = useRef<number>(0);
+
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
+
+  useEffect(() => {
+    historyIndexRef.current = historyIndex;
+  }, [historyIndex]);
+
+  // Push state to history (limita a no máximo 25 ações de reversão e descarta as mais antigas)
   const pushHistory = useCallback((newProject: Project) => {
     setHistory((prev) => {
-      const sliced = prev.slice(0, historyIndex + 1);
-      return [...sliced, newProject];
+      const curIndex = historyIndexRef.current;
+      // Descarta qualquer futuro de redo à frente do índice atual
+      const validSlice = prev.slice(0, curIndex + 1);
+      const combined = [...validSlice, newProject];
+
+      // Se ultrapassar 25 ações de reversão (26 estados), remove os mais antigos do início
+      if (combined.length > MAX_HISTORY_STATES) {
+        const trimmed = combined.slice(combined.length - MAX_HISTORY_STATES);
+        const newIdx = trimmed.length - 1;
+        historyRef.current = trimmed;
+        historyIndexRef.current = newIdx;
+        setHistoryIndex(newIdx);
+        return trimmed;
+      }
+
+      const newIdx = combined.length - 1;
+      historyRef.current = combined;
+      historyIndexRef.current = newIdx;
+      setHistoryIndex(newIdx);
+      return combined;
     });
-    setHistoryIndex((prev) => prev + 1);
-  }, [historyIndex]);
+  }, []);
 
   const updateProjectWithHistory = useCallback((updater: (prev: Project) => Project) => {
     setProject((prev) => {
       const next = updater(prev);
+      projectRef.current = next;
       pushHistory(next);
       return next;
     });
   }, [pushHistory]);
 
   const undo = useCallback(() => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      setProject(history[newIndex]);
+    const curIdx = historyIndexRef.current;
+    const curHistory = historyRef.current;
+    if (curIdx > 0) {
+      const newIndex = curIdx - 1;
+      const targetProject = curHistory[newIndex];
+      if (targetProject) {
+        historyIndexRef.current = newIndex;
+        setHistoryIndex(newIndex);
+        setProject(targetProject);
+        projectRef.current = targetProject;
+        try {
+          localStorage.setItem('alo_editor_project', JSON.stringify(targetProject));
+        } catch {}
+
+        if (targetProject.clips.length > 0) {
+          setSelectedClipIds((prev) => {
+            const valid = prev.filter((id) => targetProject.clips.some((c) => c.id === id));
+            return valid.length > 0 ? valid : [targetProject.clips[0].id];
+          });
+        } else {
+          setSelectedClipIds([]);
+        }
+      }
     }
-  }, [historyIndex, history]);
+  }, []);
 
   const redo = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      setProject(history[newIndex]);
+    const curIdx = historyIndexRef.current;
+    const curHistory = historyRef.current;
+    if (curIdx < curHistory.length - 1) {
+      const newIndex = curIdx + 1;
+      const targetProject = curHistory[newIndex];
+      if (targetProject) {
+        historyIndexRef.current = newIndex;
+        setHistoryIndex(newIndex);
+        setProject(targetProject);
+        projectRef.current = targetProject;
+        try {
+          localStorage.setItem('alo_editor_project', JSON.stringify(targetProject));
+        } catch {}
+
+        if (targetProject.clips.length > 0) {
+          setSelectedClipIds((prev) => {
+            const valid = prev.filter((id) => targetProject.clips.some((c) => c.id === id));
+            return valid.length > 0 ? valid : [targetProject.clips[0].id];
+          });
+        } else {
+          setSelectedClipIds([]);
+        }
+      }
     }
-  }, [historyIndex, history]);
+  }, []);
 
   // Selected clip helper
   const selectedClip = useMemo(() => {
@@ -608,19 +681,46 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Add clip to track (supports optional targetStartTime for drag & drop onto timeline)
   const addClipToTrack = useCallback((asset: MediaAsset, targetTrackId?: string, targetStartTime?: number) => {
-    const trackId = targetTrackId || (asset.type === 'audio' ? 'track_audio_bg' : 'track_video_main');
+    const isVideo = asset.type === 'video';
+    const isAudio = asset.type === 'audio';
+
+    const assetWithThumb: MediaAsset = {
+      ...asset,
+      thumbnailUrl: asset.thumbnailUrl || (isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined),
+    };
+
+    // Check if there are any video clips currently on the timeline
+    const hasVideoClips = project.clips.some(
+      (c) => c.type === 'video' || c.trackId === 'track_video_main' || c.trackId === 'track_video_overlay'
+    );
+
+    // If there is no video in the timeline and we are importing a video, prioritize the main video track
+    const trackId = (!hasVideoClips && isVideo)
+      ? 'track_video_main'
+      : (targetTrackId || (isAudio ? 'track_audio_bg' : 'track_video_main'));
 
     const trackClips = project.clips.filter((c) => c.trackId === trackId);
     const endPosition = trackClips.reduce((max, c) => Math.max(max, c.startInTimeline + c.duration), 0);
-    const startInTimeline = targetStartTime !== undefined ? Math.max(0, targetStartTime) : Math.max(currentTime, endPosition);
-    const clipDuration = asset.duration && asset.duration > 0 ? asset.duration : 10.0;
+
+    // If there is no video on the timeline and a video is imported/dragged, always snap to start (0:00)
+    let startInTimeline: number;
+    if ((isVideo || trackId === 'track_video_main') && !hasVideoClips) {
+      startInTimeline = 0;
+      setCurrentTimeState(0);
+    } else if (targetStartTime !== undefined) {
+      startInTimeline = Math.max(0, targetStartTime);
+    } else {
+      startInTimeline = Math.max(currentTime, endPosition);
+    }
+
+    const clipDuration = assetWithThumb.duration && assetWithThumb.duration > 0 ? assetWithThumb.duration : 10.0;
 
     const newClip: TimelineClip = {
       id: `clip_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       trackId,
-      assetId: asset.id,
-      name: asset.name,
-      type: asset.type,
+      assetId: assetWithThumb.id,
+      name: assetWithThumb.name,
+      type: assetWithThumb.type,
       startInTimeline: parseFloat(startInTimeline.toFixed(3)),
       duration: clipDuration,
       trimStart: 0,
@@ -633,11 +733,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     updateProjectWithHistory((prev) => {
       const nextDuration = Math.max(prev.duration, startInTimeline + newClip.duration + 2.0);
-      const hasAsset = prev.assets.some((a) => a.id === asset.id);
+      const hasAsset = prev.assets.some((a) => a.id === assetWithThumb.id);
       return {
         ...prev,
         duration: nextDuration,
-        assets: hasAsset ? prev.assets : [asset, ...prev.assets],
+        assets: hasAsset ? prev.assets : [assetWithThumb, ...prev.assets],
         clips: [...prev.clips, newClip],
       };
     });
@@ -677,7 +777,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 driveFileId: file.id,
                 duration: 15.0,
                 isDrive: true,
-                thumbnailUrl: file.thumbnailUrl,
+                thumbnailUrl: file.thumbnailUrl || (isAudio ? undefined : GENERIC_VIDEO_THUMBNAIL),
                 size: file.sizeBytes,
               };
 
@@ -711,7 +811,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           driveFileId: file.id,
           duration: 15.0,
           isDrive: true,
-          thumbnailUrl: file.thumbnailUrl,
+          thumbnailUrl: file.thumbnailUrl || (isAudio ? undefined : GENERIC_VIDEO_THUMBNAIL),
           size: file.sizeBytes,
         };
 
@@ -1100,11 +1200,73 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Add asset
   const addAsset = useCallback((asset: MediaAsset) => {
+    const assetWithThumb: MediaAsset = {
+      ...asset,
+      thumbnailUrl: asset.thumbnailUrl || (asset.type === 'video' ? GENERIC_VIDEO_THUMBNAIL : undefined),
+    };
     updateProjectWithHistory((prev) => ({
       ...prev,
-      assets: prev.assets.some((a) => a.id === asset.id) ? prev.assets : [asset, ...prev.assets],
+      assets: prev.assets.some((a) => a.id === assetWithThumb.id) ? prev.assets : [assetWithThumb, ...prev.assets],
     }));
   }, [updateProjectWithHistory]);
+
+  // Update asset thumbnail (e.g. when generated asynchronously from video frame)
+  const updateAssetThumbnail = useCallback((assetId: string, thumbnailUrl: string) => {
+    setProject((prev) => ({
+      ...prev,
+      assets: prev.assets.map((a) => (a.id === assetId ? { ...a, thumbnailUrl } : a)),
+    }));
+  }, []);
+
+  // Sync real media duration (e.g. from loaded metadata in video/audio elements)
+  const syncMediaDuration = useCallback((assetId: string, realDuration: number) => {
+    if (!realDuration || isNaN(realDuration) || !isFinite(realDuration) || realDuration <= 0) return;
+
+    setProject((prev) => {
+      const asset = prev.assets.find((a) => a.id === assetId);
+      if (!asset) return prev;
+
+      const diff = Math.abs((asset.duration || 0) - realDuration);
+      if (diff < 0.2) return prev;
+
+      const durFormatted = parseFloat(realDuration.toFixed(3));
+
+      const updatedAssets = prev.assets.map((a) =>
+        a.id === assetId ? { ...a, duration: durFormatted } : a
+      );
+
+      let maxTimelineEnd = prev.duration;
+      const updatedClips = prev.clips.map((clip) => {
+        if (clip.assetId === assetId) {
+          // If the clip was at full initial asset duration (or fallback 10s/15s)
+          const wasFullAssetLength =
+            Math.abs(clip.duration - (asset.duration || 10.0)) < 0.5 ||
+            Math.abs(clip.duration - 10.0) < 0.1 ||
+            Math.abs(clip.duration - 15.0) < 0.1;
+
+          if (wasFullAssetLength) {
+            const clipEnd = clip.startInTimeline + durFormatted;
+            if (clipEnd > maxTimelineEnd) {
+              maxTimelineEnd = clipEnd + 2.0;
+            }
+            return {
+              ...clip,
+              duration: durFormatted,
+              trimEnd: durFormatted,
+            };
+          }
+        }
+        return clip;
+      });
+
+      return {
+        ...prev,
+        duration: Math.max(prev.duration, maxTimelineEnd),
+        assets: updatedAssets,
+        clips: updatedClips,
+      };
+    });
+  }, []);
 
   // Start fresh empty project
   const newProject = useCallback(() => {
@@ -1132,6 +1294,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setProject(emptyProject);
     setHistory([emptyProject]);
     setHistoryIndex(0);
+    projectRef.current = emptyProject;
+    historyRef.current = [emptyProject];
+    historyIndexRef.current = 0;
     setCurrentTimeState(0);
     setSelectedClipIds([]);
     try {
@@ -1184,6 +1349,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setHistory([newProj]);
     setHistoryIndex(0);
     projectRef.current = newProj;
+    historyRef.current = [newProj];
+    historyIndexRef.current = 0;
     setCurrentTimeState(0);
     if (newProj.clips.length > 0) {
       setSelectedClipIds([newProj.clips[0].id]);
@@ -1450,6 +1617,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         duplicateClip,
         detachAudioFromClip,
         addAsset,
+        updateAssetThumbnail,
+        syncMediaDuration,
         newProject,
         clearTimeline,
         saveProjectToDrive,

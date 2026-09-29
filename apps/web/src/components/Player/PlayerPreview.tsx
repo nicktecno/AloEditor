@@ -4,6 +4,8 @@ import React, { useRef, useEffect } from 'react';
 import { useEditor } from '@/context/EditorContext';
 import { getClipTransitionState, getClipAudioVolume } from '@/utils/transitionUtils';
 import { processFrameBackgroundRemoval } from '@/utils/backgroundRemoval';
+import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail, getMediaDuration, handleThumbnailError } from '@/utils/thumbnailGenerator';
+import { MediaAsset } from '@/types/editor';
 import styles from './Player.module.css';
 
 const formatTimecode = (seconds: number) => {
@@ -18,7 +20,8 @@ const AudioTrackPlayer: React.FC<{
   assetUrl: string;
   currentTime: number;
   isPlaying: boolean;
-}> = ({ clip, assetUrl, currentTime, isPlaying }) => {
+  onSyncDuration?: (assetId: string, duration: number) => void;
+}> = ({ clip, assetUrl, currentTime, isPlaying, onSyncDuration }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const lastClipIdRef = useRef<string | null>(null);
@@ -66,7 +69,21 @@ const AudioTrackPlayer: React.FC<{
     }
   }, [currentTime, isPlaying, clip]);
 
-  return <audio ref={audioRef} src={assetUrl} preload="auto" playsInline style={{ display: 'none' }} />;
+  return (
+    <audio
+      ref={audioRef}
+      src={assetUrl}
+      preload="auto"
+      playsInline
+      style={{ display: 'none' }}
+      onLoadedMetadata={(e) => {
+        const a = e.currentTarget;
+        if (a && a.duration && !isNaN(a.duration) && isFinite(a.duration) && a.duration > 0) {
+          onSyncDuration?.(clip.assetId, a.duration);
+        }
+      }}
+    />
+  );
 };
 
 export const PlayerPreview: React.FC = () => {
@@ -77,17 +94,22 @@ export const PlayerPreview: React.FC = () => {
     selectedClipIds,
     selectClip,
     updateClip,
+    syncMediaDuration,
+    addClipToTrack,
+    addAsset,
+    updateAssetThumbnail,
     setInspectorTab,
   } = useEditor();
 
   const [isBuffering, setIsBuffering] = React.useState(false);
+  const [isVideoReady, setIsVideoReady] = React.useState(false);
   const bufferTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleWaiting = () => {
     if (bufferTimeoutRef.current) clearTimeout(bufferTimeoutRef.current);
     bufferTimeoutRef.current = setTimeout(() => {
       setIsBuffering(true);
-    }, 450);
+    }, 300);
   };
 
   const handleCanPlay = () => {
@@ -96,6 +118,7 @@ export const PlayerPreview: React.FC = () => {
       bufferTimeoutRef.current = null;
     }
     setIsBuffering(false);
+    setIsVideoReady(true);
   };
 
   const mainVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -424,14 +447,100 @@ export const PlayerPreview: React.FC = () => {
     '21:9': styles.frame21x9,
   };
 
+  const hasVideoClips = project.clips.some(
+    (c) => c.type === 'video' || c.trackId === 'track_video_main' || c.trackId === 'track_video_overlay'
+  );
+
+  const handlePreviewDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handlePreviewDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    try {
+      const rawData = e.dataTransfer.getData('application/json');
+      if (rawData) {
+        const asset = JSON.parse(rawData) as MediaAsset;
+        addClipToTrack(asset, asset.type === 'audio' ? 'track_audio_bg' : 'track_video_main', !hasVideoClips ? 0 : currentTime);
+        return;
+      }
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const isVideo = file.type.startsWith('video');
+          const isAudio = file.type.startsWith('audio');
+          let detectedDuration = 10.0;
+          if (isVideo || isAudio) {
+            try {
+              detectedDuration = await getMediaDuration(file, isAudio);
+            } catch {}
+          }
+          const assetId = `asset_upload_${Date.now()}_${i}`;
+          const url = URL.createObjectURL(file);
+          const newAsset: MediaAsset = {
+            id: assetId,
+            name: file.name,
+            type: isVideo ? 'video' : isAudio ? 'audio' : 'image',
+            url,
+            duration: detectedDuration,
+            size: file.size,
+            thumbnailUrl: isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined,
+          };
+          addAsset(newAsset);
+          if (isVideo) {
+            captureVideoThumbnail(file, 0.5, (dur) => {
+              if (dur && dur > 0 && Math.abs(dur - detectedDuration) > 0.5) {
+                syncMediaDuration(assetId, dur);
+              }
+            }).then((captured) => {
+              if (captured && captured !== GENERIC_VIDEO_THUMBNAIL) {
+                updateAssetThumbnail(assetId, captured);
+              }
+            });
+          }
+          addClipToTrack(newAsset, isAudio ? 'track_audio_bg' : 'track_video_main', !hasVideoClips ? 0 : currentTime);
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao soltar mídia no preview:', err);
+    }
+  };
+
   const frameClass = ratioClassMap[project.settings.aspectRatio] || styles.frame16x9;
 
   return (
-    <div className={styles.viewportArea}>
+    <div
+      className={styles.viewportArea}
+      onDragOver={handlePreviewDragOver}
+      onDrop={handlePreviewDrop}
+    >
       <div ref={frameRef} className={`${styles.aspectFrame} ${frameClass}`}>
         {/* Main Video or Image Layer */}
         {activeMainClip && mainAsset ? (
           <>
+            {/* Low-Quality Proxy / Poster Underlay Layer (Always visible, eliminates black screen while loading) */}
+            <div
+              className={styles.proxyUnderlayLayer}
+              style={{
+                transform: `translate(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
+                opacity: mainTrans?.opacity ?? 1,
+                filter: mainTrans?.filterString || undefined,
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={mainAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
+                alt={activeMainClip.name}
+                className={styles.proxyUnderlayImg}
+                onError={handleThumbnailError}
+              />
+              {(!isVideoReady || isBuffering) && (
+                <div className={styles.lowQualityBlurOverlay} />
+              )}
+            </div>
+
             {mainAsset.type === 'image' || activeMainClip.type === 'image' ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -443,6 +552,7 @@ export const PlayerPreview: React.FC = () => {
                   transform: `translate(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
                   opacity: mainTrans?.opacity ?? 1,
                   filter: mainTrans?.filterString || undefined,
+                  zIndex: 2,
                 }}
               />
             ) : (
@@ -451,16 +561,28 @@ export const PlayerPreview: React.FC = () => {
                 src={mainAsset.url}
                 className={styles.videoLayer}
                 playsInline
+                preload="auto"
+                poster={mainAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
                 muted={activeMainClip.isMuted}
+                onLoadStart={() => setIsVideoReady(false)}
                 onWaiting={handleWaiting}
                 onCanPlay={handleCanPlay}
                 onPlaying={handleCanPlay}
+                onSeeked={handleCanPlay}
                 onError={handleCanPlay}
+                onLoadedMetadata={(e) => {
+                  const v = e.currentTarget;
+                  if (v && v.duration && !isNaN(v.duration) && isFinite(v.duration) && v.duration > 0) {
+                    syncMediaDuration(mainAsset.id, v.duration);
+                  }
+                }}
                 style={{
                   display: activeMainClip.backgroundRemoval?.enabled ? 'none' : 'block',
                   transform: `translate(${(activeMainClip.transform.position.x - 50) + (mainTrans?.positionX || 0)}%, ${(activeMainClip.transform.position.y - 50) + (mainTrans?.positionY || 0)}%) scale(${mainTrans?.scale || 1}) rotate(${activeMainClip.transform.rotation}deg)`,
-                  opacity: mainTrans?.opacity ?? 1,
+                  opacity: isVideoReady ? (mainTrans?.opacity ?? 1) : 0,
+                  transition: 'opacity 0.25s ease',
                   filter: mainTrans?.filterString || undefined,
+                  zIndex: 2,
                 }}
               />
             )}
@@ -473,21 +595,25 @@ export const PlayerPreview: React.FC = () => {
                   opacity: mainTrans?.opacity ?? 1,
                   filter: mainTrans?.filterString || undefined,
                   objectFit: 'contain',
+                  zIndex: 3,
                 }}
               />
             )}
-            {isBuffering && (
-              <div className={styles.loadingSpinnerOverlay}>
-                <div className={styles.spinnerCircle} />
-                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--accent-cyan)' }}>
-                  Carregando vídeo...
-                </span>
+
+            {/* Quality status badge while loading / optimizing */}
+            {(!isVideoReady || isBuffering) && (
+              <div className={styles.proxyQualityBadge}>
+                <div className={styles.proxyQualityDot} />
+                <span>Pré-visualização • Carregando reprodução otimizada...</span>
               </div>
             )}
           </>
         ) : (
           <div className={styles.emptyStateNotice}>
-            <span>Nenhum clipe na trilha principal neste momento</span>
+            <span>Nenhum vídeo neste momento</span>
+            <span style={{ fontSize: '11px', opacity: 0.65, marginTop: '4px' }}>
+              Arraste um vídeo da biblioteca ou solte aqui para começar no início (00:00)
+            </span>
           </div>
         )}
 
@@ -518,11 +644,19 @@ export const PlayerPreview: React.FC = () => {
                 ref={overlayVideoRef}
                 src={overlayAsset.url}
                 playsInline
+                preload="auto"
+                poster={overlayAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
                 muted={activeOverlayClip.isMuted}
                 onWaiting={handleWaiting}
                 onCanPlay={handleCanPlay}
                 onPlaying={handleCanPlay}
                 onError={handleCanPlay}
+                onLoadedMetadata={(e) => {
+                  const v = e.currentTarget;
+                  if (v && v.duration && !isNaN(v.duration) && isFinite(v.duration) && v.duration > 0) {
+                    syncMediaDuration(overlayAsset.id, v.duration);
+                  }
+                }}
                 style={{
                   display: activeOverlayClip.backgroundRemoval?.enabled ? 'none' : 'block',
                   position: 'absolute',
@@ -671,6 +805,7 @@ export const PlayerPreview: React.FC = () => {
               assetUrl={asset.url}
               currentTime={currentTime}
               isPlaying={isPlaying}
+              onSyncDuration={syncMediaDuration}
             />
           );
         })}

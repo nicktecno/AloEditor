@@ -26,7 +26,11 @@ import {
   CheckSquare,
   Eraser,
   Sparkles,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
+import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail, getMediaDuration } from '@/utils/thumbnailGenerator';
+import { MediaAsset } from '@/types/editor';
 import styles from './Timeline.module.css';
 
 export const Timeline: React.FC = () => {
@@ -49,8 +53,16 @@ export const Timeline: React.FC = () => {
     isSnappingEnabled,
     toggleSnapping,
     snapGuideTime,
+    setSnapGuideTime,
     addClipToTrack,
+    addAsset,
+    updateAssetThumbnail,
+    syncMediaDuration,
     setIsSilenceModalOpen,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useEditor();
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -74,6 +86,12 @@ export const Timeline: React.FC = () => {
       }
       if (isMobile) {
         setTimelineHeight(250);
+      } else if (typeof window !== 'undefined') {
+        if (window.innerHeight <= 768) {
+          setTimelineHeight(195);
+        } else if (window.innerHeight <= 900) {
+          setTimelineHeight(230);
+        }
       }
     } catch {}
   }, []);
@@ -148,22 +166,119 @@ export const Timeline: React.FC = () => {
   const playheadLeft = currentTime * zoom;
   const snapGuideLeft = snapGuideTime !== null ? snapGuideTime * zoom : null;
 
+  // Check if there are any video clips currently on the timeline
+  const hasVideoClips = project.clips.some(
+    (c) => c.type === 'video' || c.trackId === 'track_video_main' || c.trackId === 'track_video_overlay'
+  );
+
   const handleTrackDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
+    if (!hasVideoClips) {
+      setSnapGuideTime(0);
+    }
   };
 
-  const handleTrackDrop = (e: React.DragEvent<HTMLDivElement>, trackId: string) => {
+  const handleTrackDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setSnapGuideTime(null);
+    }
+  };
+
+  const handleTrackDrop = async (e: React.DragEvent<HTMLDivElement>, targetTrackId?: string) => {
     e.preventDefault();
+    e.stopPropagation();
+    setSnapGuideTime(null);
+
     try {
       const rawData = e.dataTransfer.getData('application/json');
-      if (!rawData) return;
-      const asset = JSON.parse(rawData);
-      if (!scrollContainerRef.current) return;
-      const rect = scrollContainerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
-      const dropTime = Math.max(0, x / zoom);
-      addClipToTrack(asset, trackId, dropTime);
+      if (rawData) {
+        const asset = JSON.parse(rawData) as MediaAsset;
+        const isVideo = asset.type === 'video';
+
+        let dropTime = 0;
+        let finalTrackId = targetTrackId || (asset.type === 'audio' ? 'track_audio_bg' : 'track_video_main');
+
+        // Se não houver vídeo na timeline e for arrastado um vídeo, importa para o início exato (0:00)
+        if (isVideo && !hasVideoClips) {
+          dropTime = 0;
+          finalTrackId = 'track_video_main';
+          setCurrentTime(0);
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollLeft = 0;
+          }
+        } else if (scrollContainerRef.current) {
+          const rect = scrollContainerRef.current.getBoundingClientRect();
+          const x = e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
+          dropTime = Math.max(0, x / zoom);
+        }
+
+        addClipToTrack(asset, finalTrackId, dropTime);
+        return;
+      }
+
+      // Drag and drop direto de arquivos de mídia do computador (SO / Explorer / Finder)
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const isVideo = file.type.startsWith('video');
+          const isAudio = file.type.startsWith('audio');
+
+          let detectedDuration = 10.0;
+          if (isVideo || isAudio) {
+            try {
+              detectedDuration = await getMediaDuration(file, isAudio);
+            } catch (err) {
+              console.warn('Não foi possível detectar duração do arquivo:', err);
+            }
+          }
+
+          const assetId = `asset_upload_${Date.now()}_${i}`;
+          const url = URL.createObjectURL(file);
+          const newAsset: MediaAsset = {
+            id: assetId,
+            name: file.name,
+            type: isVideo ? 'video' : isAudio ? 'audio' : 'image',
+            url,
+            duration: detectedDuration,
+            size: file.size,
+            thumbnailUrl: isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined,
+          };
+
+          addAsset(newAsset);
+
+          if (isVideo) {
+            captureVideoThumbnail(file, 0.5, (dur) => {
+              if (dur && dur > 0 && Math.abs(dur - detectedDuration) > 0.5) {
+                syncMediaDuration(assetId, dur);
+              }
+            }).then((captured) => {
+              if (captured && captured !== GENERIC_VIDEO_THUMBNAIL) {
+                updateAssetThumbnail(assetId, captured);
+              }
+            });
+          }
+
+          let dropTime = 0;
+          let finalTrackId = targetTrackId || (isAudio ? 'track_audio_bg' : 'track_video_main');
+
+          if (isVideo && !hasVideoClips) {
+            dropTime = 0;
+            finalTrackId = 'track_video_main';
+            setCurrentTime(0);
+            if (scrollContainerRef.current) {
+              scrollContainerRef.current.scrollLeft = 0;
+            }
+          } else if (scrollContainerRef.current) {
+            const rect = scrollContainerRef.current.getBoundingClientRect();
+            const x = e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
+            dropTime = Math.max(0, x / zoom);
+          }
+
+          addClipToTrack(newAsset, finalTrackId, dropTime);
+        }
+      }
     } catch (err) {
       console.error('Erro ao soltar mídia na timeline:', err);
     }
@@ -240,6 +355,30 @@ export const Timeline: React.FC = () => {
 
       {/* Top Toolbar */}
       <div className={styles.toolbar}>
+        {/* Undo / Redo Tool Group */}
+        <div className={styles.historyToolGroup}>
+          <button
+            className={styles.toolBtn}
+            onClick={undo}
+            disabled={!canUndo}
+            title="Desfazer ação anterior (Ctrl+Z / Cmd+Z)"
+          >
+            <Undo2 size={15} />
+            <span>Desfazer</span>
+          </button>
+          <button
+            className={styles.toolBtn}
+            onClick={redo}
+            disabled={!canRedo}
+            title="Refazer ação desfeita (Ctrl+Y / Ctrl+Shift+Z / Cmd+Shift+Z)"
+          >
+            <Redo2 size={15} />
+            <span>Refazer</span>
+          </button>
+        </div>
+
+        <div className={styles.toolDivider} />
+
         <div className={styles.toolGroup}>
           <button
             className={styles.toolBtn}
@@ -427,11 +566,17 @@ export const Timeline: React.FC = () => {
           ref={scrollContainerRef}
           className={styles.tracksScrollable}
           onScroll={handleTracksScroll}
+          onDragOver={handleTrackDragOver}
+          onDragLeave={handleTrackDragLeave}
+          onDrop={(e) => handleTrackDrop(e, 'track_video_main')}
         >
           <div
             className={styles.tracksContentContainer}
             style={{ width: `${totalWidth}px` }}
             onPointerDown={handleTrackLaneClick}
+            onDragOver={handleTrackDragOver}
+            onDragLeave={handleTrackDragLeave}
+            onDrop={(e) => handleTrackDrop(e, 'track_video_main')}
           >
             {/* Top Ruler Bar */}
             <TimelineRuler totalDuration={project.duration} />
@@ -442,7 +587,7 @@ export const Timeline: React.FC = () => {
                 className={styles.snapGuideLine}
                 style={{ left: `${snapGuideLeft}px` }}
               >
-                <div className={styles.snapGuideTag}>SNAP</div>
+                <div className={styles.snapGuideTag}>SNAP (00:00)</div>
               </div>
             )}
 
@@ -466,8 +611,15 @@ export const Timeline: React.FC = () => {
                   key={track.id}
                   className={styles.trackLane}
                   onDragOver={handleTrackDragOver}
+                  onDragLeave={handleTrackDragLeave}
                   onDrop={(e) => handleTrackDrop(e, track.id)}
                 >
+                  {track.id === 'track_video_main' && trackClips.length === 0 && (
+                    <div className={styles.emptyTrackHint}>
+                      <Film size={14} opacity={0.6} />
+                      <span>Arraste um vídeo aqui para começar no início (00:00)</span>
+                    </div>
+                  )}
                   {trackClips.map((clip) => (
                     <TimelineClip key={clip.id} clip={clip} />
                   ))}

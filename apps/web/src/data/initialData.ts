@@ -2,6 +2,18 @@ import { Project, MediaAsset, TimelineTrack, TimelineClip } from '@/types/editor
 
 export const INITIAL_ASSETS: MediaAsset[] = [
   {
+    id: 'asset_drive_1TWv_158u',
+    name: 'Video_Google_Drive_4K.mp4',
+    type: 'video',
+    url: '/api/drive/stream?fileId=1TWv-158uUBi2sWFlKllquFdrWtJYTGjc',
+    driveFileId: '1TWv-158uUBi2sWFlKllquFdrWtJYTGjc',
+    isDrive: true,
+    duration: 15.0,
+    dimensions: { width: 1920, height: 1080 },
+    size: 25165824,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&auto=format&fit=crop&q=60',
+  },
+  {
     id: 'asset_drive_1',
     name: 'Vlog_Viagem_Drone.mp4',
     type: 'video',
