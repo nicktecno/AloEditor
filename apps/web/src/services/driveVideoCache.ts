@@ -177,6 +177,17 @@ async function saveVideoToCache(fileId: string, blob: Blob, mimeType: string): P
   }
 }
 
+/**
+ * Salva um blob de vídeo local no cache IndexedDB e memória RAM
+ */
+export async function cacheLocalVideoBlob(assetId: string, blob: Blob): Promise<string> {
+  const mimeType = blob.type || 'video/mp4';
+  await saveVideoToCache(assetId, blob, mimeType);
+  const blobUrl = URL.createObjectURL(blob);
+  inMemoryBlobUrls.set(assetId, blobUrl);
+  return blobUrl;
+}
+
 export interface PreloadOptions {
   fileId: string;
   streamUrl: string;

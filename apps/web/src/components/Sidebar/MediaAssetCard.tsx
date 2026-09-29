@@ -201,21 +201,6 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
           </div>
         )}
 
-        {asset.isDrive ? (
-          <div
-            className={styles.badgeDrive}
-            title={asset.proxyUrl ? 'Vídeo em cache local no navegador (0ms latência)' : 'Vídeo do Google Drive'}
-          >
-            <Cloud size={10} />
-            <span>{asset.proxyUrl ? 'DRIVE • CACHE' : (asset.preloadProgress && asset.preloadProgress < 100 ? `DRIVE ${asset.preloadProgress}%` : 'DRIVE')}</span>
-          </div>
-        ) : asset.isOffline ? (
-          <div className={styles.badgeOffline} title="Arquivo offline. Reconecte a pasta para reativar.">
-            <AlertTriangle size={10} />
-            <span>OFFLINE</span>
-          </div>
-        ) : null}
-
         {/* Dynamic Duration / Scrub Timecode Badge */}
         <div
           className={`${styles.durationBadge} ${isHovered && isVideo ? styles.durationBadgeActive : ''}`}
@@ -224,6 +209,49 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
             ? `${formatDisplayTime(currentTime)} / ${formatDisplayTime(duration)}`
             : `${duration.toFixed(1)}s`}
         </div>
+
+        {/* Full Importing & Cache Generating Overlay */}
+        {isVideo && (asset.status === 'importing' || ((asset.preloadProgress !== undefined) && asset.preloadProgress < 100 && !asset.proxyUrl)) && (
+          <div className={styles.importingOverlay} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.importingSpinner} />
+            <div className={styles.importingTextGroup}>
+              <span className={styles.importingTitle}>Importando...</span>
+              <span className={styles.importingPercent}>{asset.preloadProgress ?? 0}%</span>
+            </div>
+            <div className={styles.importingProgressBar}>
+              <div
+                className={styles.importingProgressFill}
+                style={{ width: `${Math.max(6, asset.preloadProgress ?? 0)}%` }}
+              />
+            </div>
+            <span className={styles.importingSub}>Gerando cache otimizado</span>
+          </div>
+        )}
+
+        {asset.isDrive ? (
+          <div
+            className={styles.badgeDrive}
+            title={asset.proxyUrl ? 'Vídeo em cache local no navegador (0ms latência)' : 'Vídeo do Google Drive'}
+          >
+            <Cloud size={10} />
+            <span>
+              {asset.proxyUrl
+                ? 'DRIVE • CACHE'
+                : (asset.preloadProgress && asset.preloadProgress < 100
+                ? `IMPORTANDO ${asset.preloadProgress}%`
+                : 'DRIVE')}
+            </span>
+          </div>
+        ) : asset.proxyUrl ? (
+          <div className={styles.badgeCached} title="Vídeo otimizado no cache local do navegador">
+            <span>CACHE 100%</span>
+          </div>
+        ) : asset.isOffline ? (
+          <div className={styles.badgeOffline} title="Arquivo offline. Reconecte a pasta para reativar.">
+            <AlertTriangle size={10} />
+            <span>OFFLINE</span>
+          </div>
+        ) : null}
 
         {/* Quick Action Buttons (Add + & Delete Trash) */}
         <div className={styles.cardActionBtns}>

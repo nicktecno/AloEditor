@@ -33,6 +33,8 @@ export const PlayerControls: React.FC = () => {
     togglePlay,
     project,
     splitClipAtPlayhead,
+    previewQuality,
+    setPreviewQuality,
   } = useEditor();
 
   const handleStepBackward = () => {
@@ -151,31 +153,45 @@ export const PlayerControls: React.FC = () => {
           <option value="2">2.0x</option>
         </select>
 
-        {/* Status de Pré-carregamento e Cache do Google Drive */}
-        {(() => {
-          const driveAsset = project.assets.find((a) => a.isDrive && a.driveFileId);
-          if (!driveAsset) return null;
+        <select
+          className={styles.speedSelect}
+          value={previewQuality}
+          onChange={(e) => setPreviewQuality(e.target.value as any)}
+          title="Qualidade da Pré-visualização (Qualidade baixa/otimizada acelera a reprodução e evita travamentos)"
+        >
+          <option value="low">Rascunho (360p Otimizado)</option>
+          <option value="medium">Média (540p Fluido)</option>
+          <option value="high">Alta (Original)</option>
+        </select>
 
-          if (driveAsset.proxyUrl) {
+        {/* Status de Importação e Cache de Vídeos */}
+        {(() => {
+          const importingAsset = project.assets.find(
+            (a) =>
+              a.type === 'video' &&
+              (a.status === 'importing' || ((a.preloadProgress ?? 100) < 100 && !a.proxyUrl))
+          );
+          if (importingAsset) {
             return (
               <div
-                className={styles.cacheReadyBadge}
-                title="Vídeo do Google Drive pré-carregado no cache local do navegador (0ms de latência, sem travamentos)"
+                className={styles.preloadBadge}
+                title={`Importando e gerando cache otimizado: ${importingAsset.name} (${importingAsset.preloadProgress ?? 0}%)`}
               >
-                <CheckCircle size={12} />
-                <span>Drive Cache 100%</span>
+                <div className={styles.preloadSpinner} />
+                <span>Importando {importingAsset.preloadProgress ?? 0}%</span>
               </div>
             );
           }
 
-          if ((driveAsset.preloadProgress ?? 0) > 0 && (driveAsset.preloadProgress ?? 0) < 100) {
+          const hasCachedVideo = project.assets.some((a) => a.type === 'video' && a.proxyUrl);
+          if (hasCachedVideo) {
             return (
               <div
-                className={styles.preloadBadge}
-                title={`Pré-carregando vídeo do Google Drive no navegador para reprodução instantânea (${driveAsset.preloadProgress}%)`}
+                className={styles.cacheReadyBadge}
+                title="Mídias em cache local no navegador (0ms de latência, sem travamentos)"
               >
-                <div className={styles.preloadSpinner} />
-                <span>Drive {driveAsset.preloadProgress}%</span>
+                <CheckCircle size={12} />
+                <span>Cache Otimizado</span>
               </div>
             );
           }

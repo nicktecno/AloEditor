@@ -2,6 +2,8 @@ export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:5' | '21:9';
 
 export type MediaType = 'video' | 'audio' | 'image' | 'text';
 
+export type PlaybackQuality = 'low' | 'medium' | 'high';
+
 export interface MediaAsset {
   id: string;
   name: string;
@@ -16,6 +18,7 @@ export interface MediaAsset {
   isOffline?: boolean;
   proxyUrl?: string;
   preloadProgress?: number; // 0 to 100
+  status?: 'ready' | 'importing' | 'optimizing' | 'error';
 }
 
 export interface ClipTransform {

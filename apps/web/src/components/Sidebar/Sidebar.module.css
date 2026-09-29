@@ -387,6 +387,24 @@
   gap: 4px;
 }
 
+.badgeCached {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(4, 211, 97, 0.2);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(4, 211, 97, 0.5);
+  color: var(--accent-cyan);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 5;
+}
+
 .badgeOffline {
   position: absolute;
   top: 6px;
@@ -404,6 +422,76 @@
   gap: 4px;
   z-index: 5;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+/* Importing & Background Caching Full Overlay */
+.importingOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 15, 29, 0.88);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  z-index: 10;
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+
+.importingSpinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(4, 211, 97, 0.2);
+  border-top-color: var(--accent-cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.importingTextGroup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 130px;
+}
+
+.importingTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+}
+
+.importingPercent {
+  font-size: 11px;
+  font-family: var(--font-geist-mono);
+  color: var(--accent-cyan);
+  font-weight: 700;
+}
+
+.importingProgressBar {
+  width: 100%;
+  max-width: 130px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.importingProgressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #04d361, #00b4d8);
+  border-radius: 999px;
+  transition: width 0.2s ease-out;
+}
+
+.importingSub {
+  font-size: 9px;
+  color: var(--text-tertiary);
+  text-align: center;
 }
 
 .durationBadge {

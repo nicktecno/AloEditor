@@ -283,6 +283,8 @@ export const Timeline: React.FC = () => {
             url,
             duration: detectedDuration,
             size: file.size,
+            status: isVideo ? 'importing' : 'ready',
+            preloadProgress: isVideo ? 25 : 100,
             thumbnailUrl: isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined,
           };
 

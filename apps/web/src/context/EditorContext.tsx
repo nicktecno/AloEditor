@@ -10,6 +10,7 @@ import {
   SidebarTab,
   InspectorTab,
   SavedProjectMeta,
+  PlaybackQuality,
 } from '@/types/editor';
 import { INITIAL_PROJECT } from '@/data/initialData';
 import {
@@ -25,7 +26,7 @@ import {
   GoogleDriveFile,
 } from '@/services/googleDrive';
 import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail } from '@/utils/thumbnailGenerator';
-import { getCachedDriveVideoUrl, preloadDriveVideo, evictCachedVideo, clearAllDriveCache } from '@/services/driveVideoCache';
+import { getCachedDriveVideoUrl, preloadDriveVideo, evictCachedVideo, clearAllDriveCache, cacheLocalVideoBlob } from '@/services/driveVideoCache';
 
 interface EditorContextType {
   project: Project;
@@ -37,6 +38,8 @@ interface EditorContextType {
   sidebarTab: SidebarTab;
   inspectorTab: InspectorTab;
   zoom: number; // pixels per second
+  previewQuality: PlaybackQuality;
+  setPreviewQuality: (quality: PlaybackQuality) => void;
   isSnappingEnabled: boolean;
   snapGuideTime: number | null;
   setSnapGuideTime: (time: number | null) => void;
@@ -169,6 +172,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [mobileView, setMobileView] = useState<'editor' | 'media' | 'inspector'>('editor');
   const [zoom, setZoom] = useState(60); // 60px = 1 second
+  const [previewQuality, setPreviewQuality] = useState<PlaybackQuality>('low'); // Padrão leve e rápido
   const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
   const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
 
@@ -408,63 +412,141 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [isHydrated, project.id]);
 
-  // Auto-preload and cache Google Drive videos in the background (IndexedDB & in-memory Blob)
-  useEffect(() => {
-    if (!isHydrated) return;
+  const activeCachingTasks = useRef<Set<string>>(new Set());
 
-    const driveAssets = project.assets.filter((a) => a.isDrive && a.driveFileId && !a.proxyUrl);
-    if (driveAssets.length === 0) return;
+  // Inicia cache e pré-carregamento imediato no navegador para vídeos (Google Drive ou Local)
+  const startAssetCaching = useCallback(
+    async (asset: MediaAsset) => {
+      if (asset.type !== 'video') return;
 
-    let isCancelled = false;
+      const cacheKey = asset.driveFileId || asset.id;
+      if (activeCachingTasks.current.has(cacheKey)) return;
 
-    driveAssets.forEach((asset) => {
-      const fileId = asset.driveFileId!;
-      getCachedDriveVideoUrl(fileId).then((cachedBlobUrl) => {
-        if (isCancelled) return;
-        if (cachedBlobUrl) {
+      // 1. Verifica se já está presente no cache local (RAM ou IndexedDB)
+      try {
+        const cachedUrl = await getCachedDriveVideoUrl(cacheKey);
+        if (cachedUrl) {
           setProject((prev) => ({
             ...prev,
             assets: prev.assets.map((a) =>
-              a.id === asset.id ? { ...a, proxyUrl: cachedBlobUrl, preloadProgress: 100 } : a
+              a.id === asset.id
+                ? { ...a, proxyUrl: cachedUrl, preloadProgress: 100, status: 'ready' }
+                : a
             ),
           }));
           return;
         }
+      } catch {}
 
-        // Inicia download e cache progressivo em segundo plano
-        preloadDriveVideo({
-          fileId,
-          streamUrl: asset.url,
-          token: googleAccessToken,
-          onProgress: (percent) => {
-            if (isCancelled) return;
-            setProject((prev) => ({
-              ...prev,
-              assets: prev.assets.map((a) =>
-                a.id === asset.id ? { ...a, preloadProgress: percent } : a
-              ),
-            }));
-          },
-        })
-          .then((blobUrl) => {
-            if (isCancelled) return;
-            setProject((prev) => ({
-              ...prev,
-              assets: prev.assets.map((a) =>
-                a.id === asset.id ? { ...a, proxyUrl: blobUrl, preloadProgress: 100 } : a
-              ),
-            }));
-          })
-          .catch((err) => {
-            console.warn('Erro ao pré-carregar vídeo do Drive no cache:', err);
+      activeCachingTasks.current.add(cacheKey);
+
+      // 2. Se for vídeo do Google Drive
+      if (asset.isDrive && asset.driveFileId) {
+        setProject((prev) => ({
+          ...prev,
+          assets: prev.assets.map((a) =>
+            a.id === asset.id
+              ? { ...a, status: 'importing', preloadProgress: Math.max(a.preloadProgress ?? 0, 5) }
+              : a
+          ),
+        }));
+
+        try {
+          const blobUrl = await preloadDriveVideo({
+            fileId: asset.driveFileId,
+            streamUrl: asset.url,
+            token: googleAccessToken,
+            onProgress: (percent) => {
+              setProject((prev) => ({
+                ...prev,
+                assets: prev.assets.map((a) =>
+                  a.id === asset.id
+                    ? {
+                        ...a,
+                        preloadProgress: percent,
+                        status: percent >= 100 ? 'ready' : 'importing',
+                      }
+                    : a
+                ),
+              }));
+            },
           });
-      });
-    });
 
-    return () => {
-      isCancelled = true;
-    };
-  }, [isHydrated, project.assets, googleAccessToken]);
+          setProject((prev) => ({
+            ...prev,
+            assets: prev.assets.map((a) =>
+              a.id === asset.id
+                ? { ...a, proxyUrl: blobUrl, preloadProgress: 100, status: 'ready' }
+                : a
+            ),
+          }));
+        } catch (err) {
+          console.warn('Falha no pré-carregamento do cache do Drive:', err);
+          setProject((prev) => ({
+            ...prev,
+            assets: prev.assets.map((a) =>
+              a.id === asset.id ? { ...a, status: 'ready', preloadProgress: 100 } : a
+            ),
+          }));
+        } finally {
+          activeCachingTasks.current.delete(cacheKey);
+        }
+      } else if (!asset.isDrive && asset.url) {
+        // Vídeo local: persiste em cache IndexedDB para não perder referência e dar suporte a busca em 0ms
+        setProject((prev) => ({
+          ...prev,
+          assets: prev.assets.map((a) =>
+            a.id === asset.id ? { ...a, status: 'importing', preloadProgress: 35 } : a
+          ),
+        }));
+
+        try {
+          const res = await fetch(asset.url);
+          const blob = await res.blob();
+          setProject((prev) => ({
+            ...prev,
+            assets: prev.assets.map((a) =>
+              a.id === asset.id ? { ...a, preloadProgress: 80 } : a
+            ),
+          }));
+
+          const cachedBlobUrl = await cacheLocalVideoBlob(asset.id, blob);
+          setProject((prev) => ({
+            ...prev,
+            assets: prev.assets.map((a) =>
+              a.id === asset.id
+                ? { ...a, proxyUrl: cachedBlobUrl, preloadProgress: 100, status: 'ready' }
+                : a
+            ),
+          }));
+        } catch (e) {
+          console.warn('Erro ao indexar vídeo local:', e);
+          setProject((prev) => ({
+            ...prev,
+            assets: prev.assets.map((a) =>
+              a.id === asset.id ? { ...a, status: 'ready', preloadProgress: 100 } : a
+            ),
+          }));
+        } finally {
+          activeCachingTasks.current.delete(cacheKey);
+        }
+      } else {
+        activeCachingTasks.current.delete(cacheKey);
+      }
+    },
+    [googleAccessToken]
+  );
+
+  // Monitora mídias pendentes de cache no projeto e inicia download progressivo imediatamente
+  useEffect(() => {
+    if (!isHydrated) return;
+    const uncachedVideos = project.assets.filter(
+      (a) => a.type === 'video' && (!a.proxyUrl || a.status === 'importing') && (a.preloadProgress ?? 0) < 100
+    );
+    uncachedVideos.forEach((asset) => {
+      startAssetCaching(asset);
+    });
+  }, [isHydrated, project.assets, startAssetCaching]);
 
   // Helper single clip selected ID
   const selectedClipId = selectedClipIds[0] || null;
@@ -1365,20 +1447,42 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [project.clips, updateProjectWithHistory, setSelectedClipIds]
   );
 
-  // Add asset
-  const addAsset = useCallback((asset: MediaAsset) => {
-    const assetWithThumb: MediaAsset = {
-      ...asset,
-      isOffline: false,
-      thumbnailUrl: asset.thumbnailUrl || (asset.type === 'video' ? GENERIC_VIDEO_THUMBNAIL : undefined),
-    };
-    updateProjectWithHistory((prev) => ({
-      ...prev,
-      assets: prev.assets.some((a) => a.id === assetWithThumb.id)
-        ? prev.assets.map((a) => (a.id === assetWithThumb.id ? { ...a, isOffline: false, url: assetWithThumb.url } : a))
-        : [assetWithThumb, ...prev.assets],
-    }));
-  }, [updateProjectWithHistory]);
+  // Add asset (Inicia cache imediato para vídeos com status 'importing')
+  const addAsset = useCallback(
+    (asset: MediaAsset) => {
+      const isVideo = asset.type === 'video';
+      const isImporting = isVideo && (!asset.proxyUrl || asset.isDrive);
+      const assetWithThumb: MediaAsset = {
+        ...asset,
+        isOffline: false,
+        thumbnailUrl: asset.thumbnailUrl || (isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined),
+        status: isImporting ? 'importing' : (asset.status || 'ready'),
+        preloadProgress: asset.proxyUrl ? 100 : (asset.preloadProgress ?? (isImporting ? 5 : 100)),
+      };
+
+      updateProjectWithHistory((prev) => ({
+        ...prev,
+        assets: prev.assets.some((a) => a.id === assetWithThumb.id)
+          ? prev.assets.map((a) =>
+              a.id === assetWithThumb.id
+                ? {
+                    ...a,
+                    isOffline: false,
+                    url: assetWithThumb.url,
+                    status: assetWithThumb.status,
+                    preloadProgress: assetWithThumb.preloadProgress,
+                  }
+                : a
+            )
+          : [assetWithThumb, ...prev.assets],
+      }));
+
+      if (isVideo) {
+        startAssetCaching(assetWithThumb);
+      }
+    },
+    [updateProjectWithHistory, startAssetCaching]
+  );
 
   // Remove asset from project library (optionally removing associated clips)
   const removeAsset = useCallback((assetId: string, deleteAssociatedClips = false) => {
@@ -1987,6 +2091,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         zoomIn,
         zoomOut,
         zoomToFit,
+        previewQuality,
+        setPreviewQuality,
         isSnappingEnabled,
         snapGuideTime,
         setSnapGuideTime,

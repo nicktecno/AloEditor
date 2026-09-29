@@ -253,6 +253,11 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     window.addEventListener('pointercancel', onPointerUp);
   };
 
+  const isImporting =
+    clip.type === 'video' &&
+    asset &&
+    (asset.status === 'importing' || ((asset.preloadProgress !== undefined) && asset.preloadProgress < 100 && !asset.proxyUrl));
+
   return (
     <div
       className={`${styles.clipItem} ${themeClass} ${clip.type === 'audio' ? styles.clipItemAudio : ''} ${isSelected ? styles.clipItemSelected : ''} ${isDragging ? styles.clipDragging : ''}`}
@@ -262,6 +267,18 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
       }}
       onPointerDown={handlePointerDown}
     >
+      {/* Importing & Cache Generating Strip Overlay */}
+      {isImporting && (
+        <div className={styles.clipImportingStrip} title={`Importando mídia e gerando cache (${asset?.preloadProgress ?? 0}%)`}>
+          <div className={styles.clipImportingSpinner} />
+          {widthPos >= 70 && (
+            <span className={styles.clipImportingText}>
+              Importando {asset?.preloadProgress ?? 0}%
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Subtle waveform graphic for audio clips */}
       {clip.type === 'audio' && <div className={styles.clipAudioWaveform} />}
 

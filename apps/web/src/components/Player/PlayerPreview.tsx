@@ -104,6 +104,7 @@ export const PlayerPreview: React.FC = () => {
     setInspectorTab,
     setIsRelinkModalOpen,
     markAssetOffline,
+    previewQuality,
   } = useEditor();
 
   const [isBuffering, setIsBuffering] = React.useState(false);
@@ -636,6 +637,8 @@ export const PlayerPreview: React.FC = () => {
             url,
             duration: detectedDuration,
             size: file.size,
+            status: isVideo ? 'importing' : 'ready',
+            preloadProgress: isVideo ? 25 : 100,
             thumbnailUrl: isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined,
           };
           addAsset(newAsset);
@@ -667,6 +670,17 @@ export const PlayerPreview: React.FC = () => {
       onDrop={handlePreviewDrop}
     >
       <div ref={frameRef} className={`${styles.aspectFrame} ${frameClass}`}>
+        {/* Importing & Cache Generation Floating Pill */}
+        {mainAsset && (mainAsset.status === 'importing' || ((mainAsset.preloadProgress ?? 100) < 100 && !mainAsset.proxyUrl)) && (
+          <div className={styles.playerImportingOverlay}>
+            <div className={styles.playerImportingSpinner} />
+            <div className={styles.playerImportingText}>
+              <span>Importando e gerando cache otimizado ({mainAsset.preloadProgress ?? 0}%)...</span>
+              <small>Reprodução instantânea em 0ms assim que concluído</small>
+            </div>
+          </div>
+        )}
+
         {/* Main Video or Image Layer */}
         {activeMainClip && mainAsset ? (
           <>

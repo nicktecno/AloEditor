@@ -89,6 +89,8 @@ export const MediaPanel: React.FC = () => {
       driveFileId: fileId,
       duration: 15.0,
       isDrive: true,
+      status: 'importing',
+      preloadProgress: 5,
       thumbnailUrl: 'https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&auto=format&fit=crop&q=60',
     };
 
@@ -266,6 +268,8 @@ export const MediaPanel: React.FC = () => {
         url,
         duration: detectedDuration,
         size: file.size,
+        status: isVideo ? 'importing' : 'ready',
+        preloadProgress: isVideo ? 25 : 100,
         thumbnailUrl: isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined,
       };
 
@@ -297,6 +301,8 @@ export const MediaPanel: React.FC = () => {
       driveFileId: file.id,
       duration: file.durationSeconds || 15.0,
       isDrive: true,
+      status: file.mimeType.startsWith('video') ? 'importing' : 'ready',
+      preloadProgress: file.mimeType.startsWith('video') ? 5 : 100,
       thumbnailUrl: file.thumbnailUrl || (file.mimeType.startsWith('audio') ? undefined : GENERIC_VIDEO_THUMBNAIL),
       size: file.sizeBytes,
     };
