@@ -408,6 +408,43 @@
   }
 }
 
+.clipDriveAuthStrip {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(2, 132, 199, 0.45) 0%,
+    rgba(37, 99, 235, 0.55) 100%
+  );
+  border: 1px dashed rgba(56, 189, 248, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  z-index: 12;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  padding: 0 6px;
+  transition: all 0.2s ease;
+}
+
+.clipDriveAuthStrip:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(2, 132, 199, 0.7) 0%,
+    rgba(37, 99, 235, 0.8) 100%
+  );
+  border-color: #38bdf8;
+}
+
+.clipDriveAuthText {
+  font-size: 10px;
+  font-weight: 700;
+  color: #f0f9ff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+
 /* Clip Themes */
 .clipVideo {
   background: var(--clip-video-bg);

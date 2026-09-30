@@ -16,6 +16,7 @@ export interface MediaAsset {
   size?: number; // bytes
   isDrive?: boolean;
   isOffline?: boolean;
+  isAuthExpired?: boolean;
   proxyUrl?: string;
   preloadProgress?: number; // 0 to 100
   status?: 'ready' | 'importing' | 'optimizing' | 'error';

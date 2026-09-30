@@ -234,15 +234,28 @@ export async function preloadDriveVideo({
           });
           if (directRes.ok) {
             response = directRes;
+          } else if (directRes.status === 401 || directRes.status === 403) {
+            throw new Error(`AUTH_EXPIRED: Token do Google Drive expirado ou inválido (HTTP ${directRes.status})`);
           }
-        } catch {
+        } catch (e: any) {
+          if (e?.message?.startsWith('AUTH_EXPIRED')) {
+            throw e;
+          }
           // Fallback para streaming da rota Next.js
         }
       }
 
       // 2. Se o download direto não foi possível, utiliza a rota /api/drive/stream
       if (!response || !response.ok) {
-        response = await fetch(streamUrl);
+        const fetchHeaders: Record<string, string> = {};
+        if (token && token.length > 10) {
+          fetchHeaders['Authorization'] = `Bearer ${token}`;
+        }
+        response = await fetch(streamUrl, { headers: fetchHeaders });
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`AUTH_EXPIRED: Sessão do Google Drive expirada (HTTP ${response.status})`);
       }
 
       if (!response.ok) {

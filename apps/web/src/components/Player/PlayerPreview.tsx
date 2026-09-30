@@ -7,7 +7,7 @@ import { processFrameBackgroundRemoval } from '@/utils/backgroundRemoval';
 import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail, getMediaDuration, handleThumbnailError } from '@/utils/thumbnailGenerator';
 import { createWebGLVideoPipeline, seekHardwareAccelerated, WebGLVideoPipeline } from '@/utils/webglRenderer';
 import { MediaAsset } from '@/types/editor';
-import { AlertTriangle, FolderSearch } from 'lucide-react';
+import { AlertTriangle, FolderSearch, Cloud } from 'lucide-react';
 import styles from './Player.module.css';
 
 const formatTimecode = (seconds: number) => {
@@ -105,6 +105,10 @@ export const PlayerPreview: React.FC = () => {
     setInspectorTab,
     setIsRelinkModalOpen,
     markAssetOffline,
+    markAssetAuthExpired,
+    googleAccessToken,
+    loginWithGoogle,
+    setIsDrivePickerOpen,
     previewQuality,
   } = useEditor();
 
@@ -753,10 +757,16 @@ export const PlayerPreview: React.FC = () => {
                 onError={(e) => {
                   handleCanPlay();
                   const target = e.currentTarget;
-                  if (mainAsset && !mainAsset.isDrive && target.error?.code === 4) {
-                    fetch(mainAsset.url).catch(() => {
-                      markAssetOffline(mainAsset.id);
-                    });
+                  if (mainAsset) {
+                    if (mainAsset.isDrive) {
+                      if (!mainAsset.proxyUrl) {
+                        markAssetAuthExpired(mainAsset.id, true);
+                      }
+                    } else if (target.error?.code === 4) {
+                      fetch(mainAsset.url).catch(() => {
+                        markAssetOffline(mainAsset.id);
+                      });
+                    }
                   }
                 }}
                 onLoadedMetadata={(e) => {
@@ -790,8 +800,38 @@ export const PlayerPreview: React.FC = () => {
               />
             )}
 
-            {/* Offline media overlay if asset file is missing on this machine */}
-            {mainAsset && mainAsset.isOffline && (
+            {/* Google Drive Auth Required overlay if session expired or lost */}
+            {mainAsset && mainAsset.isDrive && (mainAsset.isAuthExpired || (!mainAsset.proxyUrl && !googleAccessToken)) && (
+              <div className={styles.driveAuthOverlay}>
+                <div className={styles.driveAuthIconCircle}>
+                  <Cloud size={32} color="#06b6d4" />
+                </div>
+                <span className={styles.driveAuthTitle}>Sessão do Google Drive Necessária</span>
+                <span className={styles.driveAuthDesc}>
+                  A mídia &quot;{mainAsset.name}&quot; requer conexão com o Google Drive para reprodução. Conecte sua conta para continuar editando na linha do tempo.
+                </span>
+                <div className={styles.driveAuthButtonsRow}>
+                  <button
+                    type="button"
+                    className={styles.driveAuthLoginBtn}
+                    onClick={loginWithGoogle}
+                  >
+                    <Cloud size={15} />
+                    <span>Conectar Google Drive</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.driveAuthManageBtn}
+                    onClick={() => setIsDrivePickerOpen(true)}
+                  >
+                    <span>Configurar Drive</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Offline media overlay if local asset file is missing on this machine */}
+            {mainAsset && !mainAsset.isDrive && mainAsset.isOffline && (
               <div className={styles.offlineMediaOverlay}>
                 <AlertTriangle size={36} color="#f59e0b" />
                 <span className={styles.offlineTitle}>Mídia Offline</span>
@@ -853,10 +893,16 @@ export const PlayerPreview: React.FC = () => {
                 onError={(e) => {
                   handleCanPlay();
                   const target = e.currentTarget;
-                  if (overlayAsset && !overlayAsset.isDrive && target.error?.code === 4) {
-                    fetch(overlayAsset.url).catch(() => {
-                      markAssetOffline(overlayAsset.id);
-                    });
+                  if (overlayAsset) {
+                    if (overlayAsset.isDrive) {
+                      if (!overlayAsset.proxyUrl) {
+                        markAssetAuthExpired(overlayAsset.id, true);
+                      }
+                    } else if (target.error?.code === 4) {
+                      fetch(overlayAsset.url).catch(() => {
+                        markAssetOffline(overlayAsset.id);
+                      });
+                    }
                   }
                 }}
                 onLoadedMetadata={(e) => {

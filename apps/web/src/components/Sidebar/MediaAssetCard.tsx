@@ -230,12 +230,20 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
 
         {asset.isDrive ? (
           <div
-            className={styles.badgeDrive}
-            title={asset.proxyUrl ? 'Vídeo em cache local no navegador (0ms latência)' : 'Vídeo do Google Drive'}
+            className={asset.isAuthExpired ? styles.badgeOffline : styles.badgeDrive}
+            title={
+              asset.isAuthExpired
+                ? 'Sessão do Google Drive expirada. Reconecte para reproduzir.'
+                : asset.proxyUrl
+                ? 'Vídeo em cache local no navegador (0ms latência)'
+                : 'Vídeo do Google Drive'
+            }
           >
-            <Cloud size={10} />
+            {asset.isAuthExpired ? <AlertTriangle size={10} /> : <Cloud size={10} />}
             <span>
-              {asset.proxyUrl
+              {asset.isAuthExpired
+                ? 'DRIVE EXPIRADO'
+                : asset.proxyUrl
                 ? 'DRIVE • CACHE'
                 : (asset.preloadProgress && asset.preloadProgress < 100
                 ? `IMPORTANDO ${asset.preloadProgress}%`

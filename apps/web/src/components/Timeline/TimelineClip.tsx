@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { useEditor } from '@/context/EditorContext';
 import { TimelineClip as ITimelineClip } from '@/types/editor';
-import { Film, Type, Music, Layers, VolumeX, Volume2 } from 'lucide-react';
+import { Film, Type, Music, Layers, VolumeX, Volume2, Cloud } from 'lucide-react';
 import { GENERIC_VIDEO_THUMBNAIL, handleThumbnailError } from '@/utils/thumbnailGenerator';
 import styles from './Timeline.module.css';
 
@@ -22,6 +22,9 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     currentTime,
     isSnappingEnabled,
     setSnapGuideTime,
+    googleAccessToken,
+    loginWithGoogle,
+    setIsDrivePickerOpen,
   } = useEditor();
 
   const asset = project.assets.find((a) => a.id === clip.assetId);
@@ -337,6 +340,11 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     asset &&
     (asset.status === 'importing' || ((asset.preloadProgress !== undefined) && asset.preloadProgress < 100 && !asset.proxyUrl));
 
+  const isDriveAuthNeeded =
+    asset?.isDrive &&
+    !asset.proxyUrl &&
+    (asset.isAuthExpired || !googleAccessToken);
+
   return (
     <div
       className={`${styles.clipItem} ${themeClass} ${clip.type === 'audio' ? styles.clipItemAudio : ''} ${isSelected ? styles.clipItemSelected : ''} ${isDragging ? styles.clipDragging : ''}`}
@@ -347,12 +355,35 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
       onPointerDown={handlePointerDown}
     >
       {/* Importing & Cache Generating Strip Overlay */}
-      {isImporting && (
+      {isImporting && !isDriveAuthNeeded && (
         <div className={styles.clipImportingStrip} title={`Importando mídia e gerando cache (${asset?.preloadProgress ?? 0}%)`}>
           <div className={styles.clipImportingSpinner} />
           {widthPos >= 70 && (
             <span className={styles.clipImportingText}>
               Importando {asset?.preloadProgress ?? 0}%
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Drive Auth Needed Strip Overlay */}
+      {isDriveAuthNeeded && (
+        <div
+          className={styles.clipDriveAuthStrip}
+          title="Sessão do Google Drive necessária para reproduzir este clipe. Clique para conectar a conta."
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!googleAccessToken) {
+              loginWithGoogle();
+            } else {
+              setIsDrivePickerOpen(true);
+            }
+          }}
+        >
+          <Cloud size={12} color="#38bdf8" />
+          {widthPos >= 70 && (
+            <span className={styles.clipDriveAuthText}>
+              Drive Desconectado
             </span>
           )}
         </div>

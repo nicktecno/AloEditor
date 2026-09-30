@@ -57,6 +57,8 @@ interface EditorContextType {
   relinkAssetsFromFiles: (files: FileList | File[], targetAssetId?: string) => Promise<{ reconnectedCount: number; notFoundCount: number }>;
   offlineAssetsCount: number;
   markAssetOffline: (assetId: string) => void;
+  isDriveAuthNeeded: boolean;
+  markAssetAuthExpired: (assetId: string, expired?: boolean) => void;
   removeSilencesFromClip: (
     clipId: string,
     silenceIntervals: Array<{ startInTimeline: number; endInTimeline: number; duration: number }>,
@@ -238,10 +240,23 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [driveProjects, setDriveProjects] = useState<Array<{ id: string; name: string; modifiedTime: string; size?: string; webViewLink?: string }>>([]);
   const [isDriveProjectsLoading, setIsDriveProjectsLoading] = useState(false);
 
+  // Helper to remove ephemeral blob: URLs before saving to localStorage
+  const sanitizeProjectForStorage = useCallback((proj: Project): Project => {
+    return {
+      ...proj,
+      assets: (proj.assets || []).map((a) => ({
+        ...a,
+        // Blob URLs are strictly session-bound and become dead memory pointers on browser reload
+        proxyUrl: a.proxyUrl?.startsWith('blob:') ? undefined : a.proxyUrl,
+      })),
+    };
+  }, []);
+
   // Synchronize a project into the local projects index and individual slot
   const syncProjectToLocalIndex = useCallback((proj: Project) => {
     try {
-      localStorage.setItem(`alo_project_${proj.id}`, JSON.stringify(proj));
+      const sanitized = sanitizeProjectForStorage(proj);
+      localStorage.setItem(`alo_project_${proj.id}`, JSON.stringify(sanitized));
       const indexRaw = localStorage.getItem('alo_editor_projects_index');
       let index: SavedProjectMeta[] = [];
       if (indexRaw) {
@@ -269,7 +284,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (e) {
       console.warn('Erro ao sincronizar índice local de projetos:', e);
     }
-  }, []);
+  }, [sanitizeProjectForStorage]);
 
   // Restore project from localStorage on initial mount
   useEffect(() => {
@@ -286,6 +301,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (saved) {
         const parsed: Project = JSON.parse(saved);
         if (parsed && Array.isArray(parsed.clips) && Array.isArray(parsed.tracks)) {
+          // Invalidate any dead blob URLs from previous browser sessions
+          parsed.assets = (parsed.assets || []).map((asset) => ({
+            ...asset,
+            proxyUrl: asset.proxyUrl?.startsWith('blob:') ? undefined : asset.proxyUrl,
+          }));
           setProject(parsed);
           setHistory([parsed]);
           setHistoryIndex(0);
@@ -313,15 +333,16 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     if (!isHydrated) return;
     try {
-      localStorage.setItem('alo_editor_project', JSON.stringify(project));
+      const sanitized = sanitizeProjectForStorage(project);
+      localStorage.setItem('alo_editor_project', JSON.stringify(sanitized));
       const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       setLastSavedAt(nowStr);
       localStorage.setItem('alo_editor_last_saved', nowStr);
-      syncProjectToLocalIndex(project);
+      syncProjectToLocalIndex(sanitized);
     } catch (e) {
       console.warn('Erro ao auto-salvar projeto no localStorage:', e);
     }
-  }, [project, isHydrated, syncProjectToLocalIndex]);
+  }, [project, isHydrated, syncProjectToLocalIndex, sanitizeProjectForStorage]);
 
   // Google Drive Cached Videos (persisted in memory + sessionStorage)
   const [driveVideos, setDriveVideos] = useState<GoogleDriveFile[]>([]);
@@ -431,13 +452,31 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             ...prev,
             assets: prev.assets.map((a) =>
               a.id === asset.id
-                ? { ...a, proxyUrl: cachedUrl, preloadProgress: 100, status: 'ready' }
+                ? {
+                    ...a,
+                    proxyUrl: cachedUrl,
+                    preloadProgress: 100,
+                    status: 'ready',
+                    isAuthExpired: false,
+                    isOffline: false,
+                  }
                 : a
             ),
           }));
           return;
         }
       } catch {}
+
+      // Se for vídeo do Google Drive e NÃO temos token ativo:
+      if (asset.isDrive && !googleAccessToken) {
+        setProject((prev) => ({
+          ...prev,
+          assets: prev.assets.map((a) =>
+            a.id === asset.id ? { ...a, isAuthExpired: true, status: 'error' } : a
+          ),
+        }));
+        return;
+      }
 
       activeCachingTasks.current.add(cacheKey);
 
@@ -447,7 +486,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ...prev,
           assets: prev.assets.map((a) =>
             a.id === asset.id
-              ? { ...a, status: 'importing', preloadProgress: Math.max(a.preloadProgress ?? 0, 5) }
+              ? { ...a, status: 'importing', preloadProgress: Math.max(a.preloadProgress ?? 0, 5), isAuthExpired: false }
               : a
           ),
         }));
@@ -466,6 +505,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         ...a,
                         preloadProgress: percent,
                         status: percent >= 100 ? 'ready' : 'importing',
+                        isAuthExpired: false,
                       }
                     : a
                 ),
@@ -477,16 +517,29 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             ...prev,
             assets: prev.assets.map((a) =>
               a.id === asset.id
-                ? { ...a, proxyUrl: blobUrl, preloadProgress: 100, status: 'ready' }
+                ? { ...a, proxyUrl: blobUrl, preloadProgress: 100, status: 'ready', isAuthExpired: false, isOffline: false }
                 : a
             ),
           }));
-        } catch (err) {
+        } catch (err: any) {
           console.warn('Falha no pré-carregamento do cache do Drive:', err);
+          const isAuthErr =
+            err?.message?.includes('AUTH_EXPIRED') ||
+            err?.message?.includes('401') ||
+            err?.message?.includes('403') ||
+            err?.message?.includes('token');
+
           setProject((prev) => ({
             ...prev,
             assets: prev.assets.map((a) =>
-              a.id === asset.id ? { ...a, status: 'ready', preloadProgress: 100 } : a
+              a.id === asset.id
+                ? {
+                    ...a,
+                    status: 'error',
+                    isAuthExpired: isAuthErr ? true : a.isAuthExpired,
+                    preloadProgress: isAuthErr ? 0 : 100,
+                  }
+                : a
             ),
           }));
         } finally {
@@ -542,12 +595,18 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     if (!isHydrated) return;
     const uncachedVideos = project.assets.filter(
-      (a) => a.type === 'video' && (!a.proxyUrl || a.status === 'importing') && (a.preloadProgress ?? 0) < 100
+      (a) =>
+        a.type === 'video' &&
+        (!a.proxyUrl || a.status === 'importing' || ((a.preloadProgress ?? 0) < 100 && !a.isAuthExpired))
     );
     uncachedVideos.forEach((asset) => {
       startAssetCaching(asset);
     });
   }, [isHydrated, project.assets, startAssetCaching]);
+
+  const isDriveAuthNeeded = useMemo(() => {
+    return project.assets.some((a) => a.isDrive && (a.isAuthExpired || (!a.proxyUrl && !googleAccessToken)));
+  }, [project.assets, googleAccessToken]);
 
   // Helper single clip selected ID
   const selectedClipId = selectedClipIds[0] || null;
@@ -603,6 +662,40 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [googleAccessToken]);
 
+  // Atualiza URLs de streaming de mídias do Drive para o novo token e reativa reprodução
+  const updateDriveAssetsToken = useCallback((newToken: string | null) => {
+    setProject((prev) => {
+      const hasDriveAssets = prev.assets.some((a) => a.isDrive);
+      if (!hasDriveAssets) return prev;
+
+      const updated = prev.assets.map((a) => {
+        if (!a.isDrive || !a.driveFileId) return a;
+        const newUrl = newToken
+          ? `/api/drive/stream?fileId=${a.driveFileId}&token=${newToken}`
+          : `/api/drive/stream?fileId=${a.driveFileId}`;
+        return {
+          ...a,
+          url: newUrl,
+          isAuthExpired: newToken ? false : a.isAuthExpired,
+          isOffline: newToken ? false : a.isOffline,
+        };
+      });
+
+      return { ...prev, assets: updated };
+    });
+  }, []);
+
+  const markAssetAuthExpired = useCallback((assetId: string, expired = true) => {
+    setProject((prev) => {
+      const asset = prev.assets.find((a) => a.id === assetId);
+      if (!asset || asset.isAuthExpired === expired) return prev;
+      return {
+        ...prev,
+        assets: prev.assets.map((a) => (a.id === assetId ? { ...a, isAuthExpired: expired } : a)),
+      };
+    });
+  }, []);
+
   // Load saved credentials from localStorage & load scripts on mount
   useEffect(() => {
     loadGoogleScripts().catch(() => {});
@@ -618,17 +711,44 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const savedToken = sessionStorage.getItem('alo_google_access_token');
     if (savedToken) {
-      setGoogleAccessToken(savedToken);
-      fetchGoogleProfile(savedToken).then((profile) => {
-        if (profile) {
-          setDriveUser(profile);
-          setIsDriveConnected(true);
-        }
-      });
-      // Pre-load videos if not already cached
-      loadDriveVideos(false).catch(() => {});
+      fetchGoogleProfile(savedToken)
+        .then((profile) => {
+          if (profile) {
+            setGoogleAccessToken(savedToken);
+            setDriveUser(profile);
+            setIsDriveConnected(true);
+            updateDriveAssetsToken(savedToken);
+            loadDriveVideos(false).catch(() => {});
+          } else {
+            // Token expirado: limpa credenciais da sessão
+            sessionStorage.removeItem('alo_google_access_token');
+            setGoogleAccessToken(null);
+            setDriveUser(null);
+            setIsDriveConnected(false);
+            setProject((prev) => ({
+              ...prev,
+              assets: prev.assets.map((a) =>
+                a.isDrive && !a.proxyUrl ? { ...a, isAuthExpired: true } : a
+              ),
+            }));
+          }
+        })
+        .catch(() => {
+          sessionStorage.removeItem('alo_google_access_token');
+          setGoogleAccessToken(null);
+          setDriveUser(null);
+          setIsDriveConnected(false);
+        });
+    } else {
+      // Sem token salvo: sinaliza mídias do Drive sem cache local
+      setProject((prev) => ({
+        ...prev,
+        assets: prev.assets.map((a) =>
+          a.isDrive && !a.proxyUrl ? { ...a, isAuthExpired: true } : a
+        ),
+      }));
     }
-  }, [loadDriveVideos]);
+  }, [loadDriveVideos, updateDriveAssetsToken]);
 
   const setGoogleCredentials = useCallback(({ clientId, apiKey }: { clientId: string; apiKey: string }) => {
     setGoogleClientId(clientId);
@@ -650,6 +770,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setGoogleAccessToken(token);
         sessionStorage.setItem('alo_google_access_token', token);
         setIsDriveConnected(true);
+        updateDriveAssetsToken(token);
         const profile = await fetchGoogleProfile(token);
         if (profile) {
           setDriveUser(profile);
@@ -661,7 +782,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         alert(`Erro na autenticação do Google: ${err.message || 'Verifique se o Client ID está correto e autoriza http://localhost:3001'}`);
       }
     );
-  }, [googleClientId, loadDriveVideos]);
+  }, [googleClientId, loadDriveVideos, updateDriveAssetsToken]);
 
   // Logout Google
   const logoutGoogle = useCallback(() => {
@@ -671,6 +792,13 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setDriveVideos([]);
     sessionStorage.removeItem('alo_google_access_token');
     sessionStorage.removeItem('alo_drive_videos_cache');
+    // Para mídias do Drive sem cache persistido no navegador:
+    setProject((prev) => ({
+      ...prev,
+      assets: prev.assets.map((a) =>
+        a.isDrive && !a.proxyUrl ? { ...a, isAuthExpired: true } : a
+      ),
+    }));
   }, []);
 
   const MAX_UNDO_LIMIT = 25; // Até no máximo 25 ações de reversão
@@ -2276,6 +2404,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         relinkAssetsFromFiles,
         offlineAssetsCount,
         markAssetOffline,
+        isDriveAuthNeeded,
+        markAssetAuthExpired,
         removeSilencesFromClip,
         undo,
         redo,
