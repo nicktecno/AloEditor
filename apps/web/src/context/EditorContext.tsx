@@ -1924,8 +1924,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             fileId: file.id,
             streamUrl,
             token: activeToken,
-            onProgress: (pct) => {
-              setIsLoading(true, `Importando "${file.name}" para a memória (${pct}%)...`);
+            onProgress: (pct, loaded, total) => {
+              const sizeInfo = total && total > 0
+                ? ` (${(loaded! / (1024 * 1024)).toFixed(0)} MB / ${(total / (1024 * 1024)).toFixed(0)} MB - ${pct}%)`
+                : ` (${pct}%)`;
+              setIsLoading(true, `Importando "${file.name}" para a memória${sizeInfo}...`);
               setProject((prev) => ({
                 ...prev,
                 assets: prev.assets.map((a) =>
@@ -1951,8 +1954,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 fileId: file.id,
                 streamUrl: freshStreamUrl,
                 token: freshToken,
-                onProgress: (pct) => {
-                  setIsLoading(true, `Importando "${file.name}" para a memória (${pct}%)...`);
+                onProgress: (pct, loaded, total) => {
+                  const sizeInfo = total && total > 0
+                    ? ` (${(loaded! / (1024 * 1024)).toFixed(0)} MB / ${(total / (1024 * 1024)).toFixed(0)} MB - ${pct}%)`
+                    : ` (${pct}%)`;
+                  setIsLoading(true, `Importando "${file.name}" para a memória${sizeInfo}...`);
                   setProject((prev) => ({
                     ...prev,
                     assets: prev.assets.map((a) =>
