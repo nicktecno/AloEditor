@@ -72,6 +72,8 @@ export const Timeline: React.FC = () => {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const trackHeadersRef = useRef<HTMLDivElement | null>(null);
   const isSyncingScrollRef = useRef<boolean>(false);
+  const zoomRef = useRef<number>(zoom);
+  zoomRef.current = zoom;
 
   // Dynamic timeline height (default 270px, resizable from 180px to 480px)
   const [timelineHeight, setTimelineHeight] = React.useState<number>(270);
@@ -179,25 +181,101 @@ export const Timeline: React.FC = () => {
     return () => window.removeEventListener('resize', updateWidth);
   }, []);
 
-  // Atalho do mouse: Ctrl / Cmd + Scroll da roda do mouse para dar zoom in / out
+  // Atalho do mouse / trackpad e celular: Pinch com 2 dedos para zoom fluido
   React.useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
 
+    // 1. Trackpad pinch (disparado como wheel com ctrlKey no Mac e Windows) + Ctrl/Cmd + Roda do Mouse
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        if (e.deltaY < 0) {
-          zoomIn();
-        } else if (e.deltaY > 0) {
-          zoomOut();
+        const currentZoom = zoomRef.current;
+        const rect = container.getBoundingClientRect();
+        const mouseX = Math.max(0, e.clientX - rect.left);
+        const contentX = mouseX + container.scrollLeft;
+        const timeAtCursor = contentX / currentZoom;
+
+        // Sensibilidade fluida contínua para trackpads e scroll wheel
+        const factor = Math.exp(-e.deltaY * 0.008);
+        const newZoom = Math.min(180, Math.max(0.5, Math.round(currentZoom * factor * 10) / 10));
+
+        if (newZoom !== currentZoom) {
+          setZoom(newZoom);
+          // Mantém o ponto sob o cursor estável na tela
+          const newContentX = timeAtCursor * newZoom;
+          container.scrollLeft = Math.max(0, newContentX - mouseX);
         }
       }
     };
 
+    // 2. Celular / Tablet: Pinch com 2 dedos na timeline
+    let initialPinchDistance = 0;
+    let initialPinchZoom = 0;
+    let initialPinchTimeAtCenter = 0;
+    let isPinching = false;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        if (dist > 10) {
+          isPinching = true;
+          initialPinchDistance = dist;
+          initialPinchZoom = zoomRef.current;
+          const rect = container.getBoundingClientRect();
+          const midX = (t1.clientX + t2.clientX) / 2;
+          const contentX = Math.max(0, midX - rect.left + container.scrollLeft);
+          initialPinchTimeAtCenter = contentX / initialPinchZoom;
+        }
+      } else {
+        isPinching = false;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && isPinching) {
+        // Impede o navegador móvel de dar zoom na página inteira
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        if (currentDist > 5 && initialPinchDistance > 0) {
+          const scale = currentDist / initialPinchDistance;
+          const newZoom = Math.min(180, Math.max(0.5, Math.round(initialPinchZoom * scale * 10) / 10));
+          setZoom(newZoom);
+
+          // Ajusta o scroll horizontal para manter o centro dos dedos estável
+          const rect = container.getBoundingClientRect();
+          const currentMidX = (t1.clientX + t2.clientX) / 2;
+          const newContentX = initialPinchTimeAtCenter * newZoom;
+          container.scrollLeft = Math.max(0, newContentX - (currentMidX - rect.left));
+        }
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        isPinching = false;
+        initialPinchDistance = 0;
+      }
+    };
+
     container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleWheel);
-  }, [zoomIn, zoomOut]);
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [setZoom]);
 
   // Calcula a duração total real considerando o fim de todos os clipes presentes no projeto
   const maxClipEnd = project.clips.reduce((max, c) => Math.max(max, c.startInTimeline + c.duration), 0);
