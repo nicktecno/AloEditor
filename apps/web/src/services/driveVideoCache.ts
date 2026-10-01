@@ -221,7 +221,7 @@ export async function preloadDriveVideo({
 
   const task = (async () => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout de segurança
+    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout para downloads em segundo plano
 
     try {
       let response: Response | null = null;

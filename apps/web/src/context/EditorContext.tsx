@@ -1794,18 +1794,21 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [project.clips, updateProjectWithHistory, setSelectedClipIds]
   );
 
-  // Add asset (Inicia cache imediato para vídeos com status 'importing')
+  // Add asset (Disponibiliza mídia imediatamente para reprodução, sem travar em 'importing')
   const addAsset = useCallback(
     (asset: MediaAsset) => {
       const isVideo = asset.type === 'video';
-      const isImporting = isVideo && (!asset.proxyUrl || asset.isDrive);
+      const isMobile =
+        typeof window !== 'undefined' &&
+        /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+
       const assetWithThumb: MediaAsset = {
         ...asset,
         isOffline: false,
         isAuthExpired: false,
         thumbnailUrl: asset.thumbnailUrl || (isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined),
-        status: isImporting ? 'importing' : (asset.status || 'ready'),
-        preloadProgress: asset.proxyUrl ? 100 : (asset.preloadProgress ?? (isImporting ? 5 : 100)),
+        status: 'ready', // Imediatamente pronto para edição e reprodução!
+        preloadProgress: 100, // 100% pronto na hora, sem travar em 5%
       };
 
       updateProjectWithHistory((prev) => ({
@@ -1818,15 +1821,16 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     isOffline: false,
                     isAuthExpired: false,
                     url: assetWithThumb.url,
-                    status: assetWithThumb.status,
-                    preloadProgress: assetWithThumb.preloadProgress,
+                    status: 'ready',
+                    preloadProgress: 100,
                   }
                 : a
             )
           : [assetWithThumb, ...prev.assets],
       }));
 
-      if (isVideo) {
+      // No mobile, o streaming nativo com Range requests pelo navegador é leve e não estoura a RAM
+      if (isVideo && !isMobile) {
         startAssetCaching(assetWithThumb);
       }
     },

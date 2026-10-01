@@ -876,7 +876,8 @@ export const PlayerPreview: React.FC = () => {
                 src={mainAsset.proxyUrl || mainAsset.url}
                 className={styles.videoLayer}
                 playsInline
-                preload="auto"
+                preload="metadata"
+                crossOrigin="anonymous"
                 poster={mainAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
                 muted={activeMainClip.isMuted}
                 onWaiting={handleWaiting}
@@ -1021,7 +1022,8 @@ export const PlayerPreview: React.FC = () => {
                 ref={overlayVideoRef}
                 src={overlayAsset.proxyUrl || overlayAsset.url}
                 playsInline
-                preload="auto"
+                preload="metadata"
+                crossOrigin="anonymous"
                 poster={overlayAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
                 muted={activeOverlayClip.isMuted}
                 onWaiting={handleWaiting}

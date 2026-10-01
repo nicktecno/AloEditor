@@ -80,12 +80,14 @@ export async function GET(request: NextRequest) {
       responseHeaders.set('Access-Control-Allow-Origin', '*');
       responseHeaders.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
       responseHeaders.set('Access-Control-Allow-Headers', 'Range, Authorization');
-      responseHeaders.set('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=86400');
-      responseHeaders.set('CDN-Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=86400');
-      responseHeaders.set('Vercel-CDN-Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=86400');
-      responseHeaders.set('ETag', `"${fileId}"`);
+      // Crucial: Range requests devem variar por Range e não serem cacheadas com resposta parcial fixa
+      responseHeaders.set('Cache-Control', 'no-cache, private');
+      responseHeaders.set('Vary', 'Range, Authorization');
 
-      const contentType = driveResponse.headers.get('content-type') || 'video/mp4';
+      let contentType = driveResponse.headers.get('content-type') || 'video/mp4';
+      if (!contentType || contentType === 'application/octet-stream' || contentType.includes('text/html')) {
+        contentType = 'video/mp4';
+      }
       responseHeaders.set('Content-Type', contentType);
 
       const contentRange = driveResponse.headers.get('content-range');
