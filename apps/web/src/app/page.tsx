@@ -3,6 +3,7 @@
 import React from 'react';
 import { EditorProvider, useEditor } from '@/context/EditorContext';
 import { Header } from '@/components/Header/Header';
+import { BackgroundDownloadBar } from '@/components/Header/BackgroundDownloadBar';
 import { MediaPanel } from '@/components/Sidebar/MediaPanel';
 import { PlayerPreview } from '@/components/Player/PlayerPreview';
 import { PlayerControls } from '@/components/Player/PlayerControls';
@@ -48,6 +49,9 @@ const EditorLayout: React.FC = () => {
 
       {/* Top Navigation & Project Bar */}
       <Header />
+
+      {/* Global Background Download Progress Bar */}
+      <BackgroundDownloadBar />
 
       {/* Middle Workspace: Sidebar + Player + Inspector */}
       <div className={styles.mainWorkspace}>

@@ -142,34 +142,20 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
     }
   };
 
-  const isImporting = asset.status === 'importing' || ((asset.preloadProgress ?? 100) < 100 && !asset.proxyUrl && !asset.url?.startsWith('blob:'));
+  const isImporting = (asset.preloadProgress ?? 100) < 100 && !asset.proxyUrl && !asset.url?.startsWith('blob:');
 
   return (
     <div
       className={styles.assetCard}
-      draggable={!isImporting}
+      draggable={true}
       onDragStart={(e) => {
-        if (isImporting) {
-          e.preventDefault();
-          return;
-        }
         e.dataTransfer.setData('application/json', JSON.stringify(asset));
         e.dataTransfer.effectAllowed = 'copy';
       }}
-      onClick={() => {
-        if (isImporting) {
-          alert(`A mídia "${asset.name}" ainda está sendo importada para a memória (${asset.preloadProgress ?? 0}%). Por favor, aguarde.`);
-          return;
-        }
-        onAdd(asset);
-      }}
-      style={{
-        opacity: isImporting ? 0.75 : 1,
-        cursor: isImporting ? 'not-allowed' : 'pointer',
-      }}
+      onClick={() => onAdd(asset)}
       title={
         isImporting
-          ? `Importando para a memória (${asset.preloadProgress ?? 0}%)... Não pode ser adicionada ainda.`
+          ? `Baixando em segundo plano (${asset.preloadProgress ?? 0}%)... Edição liberada na linha do tempo!`
           : (title || 'Passe o mouse para pré-visualizar • Clique ou arraste para a linha do tempo')
       }
     >
@@ -230,21 +216,29 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
             : `${duration.toFixed(1)}s`}
         </div>
 
-        {/* Full Importing Overlay (enquanto baixa para a memória) */}
+        {/* Background Downloading Line on Thumbnail */}
         {isImporting && (
-          <div className={styles.importingOverlay} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.importingSpinner} />
-            <div className={styles.importingTextGroup}>
-              <span className={styles.importingTitle}>Importando...</span>
-              <span className={styles.importingPercent}>{asset.preloadProgress ?? 0}%</span>
-            </div>
-            <div className={styles.importingProgressBar}>
-              <div
-                className={styles.importingProgressFill}
-                style={{ width: `${Math.max(6, asset.preloadProgress ?? 0)}%` }}
-              />
-            </div>
-            <span className={styles.importingSub}>Carregando em memória</span>
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '4px',
+              background: 'rgba(0, 0, 0, 0.6)',
+              zIndex: 8,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${Math.max(6, asset.preloadProgress ?? 0)}%`,
+                background: 'linear-gradient(90deg, #06b6d4, #10b981)',
+                transition: 'width 0.3s ease-out',
+                boxShadow: '0 0 8px rgba(6, 182, 212, 0.8)',
+              }}
+            />
           </div>
         )}
 
@@ -299,18 +293,9 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
           <button
             type="button"
             className={styles.addBtnCircle}
-            disabled={isImporting}
-            style={{
-              opacity: isImporting ? 0.35 : 1,
-              cursor: isImporting ? 'not-allowed' : 'pointer',
-            }}
-            title={isImporting ? 'Mídia ainda sendo baixada para a memória' : 'Adicionar à Linha do Tempo'}
+            title="Adicionar à Linha do Tempo"
             onClick={(e) => {
               e.stopPropagation();
-              if (isImporting) {
-                alert(`A mídia "${asset.name}" ainda está sendo importada para a memória (${asset.preloadProgress ?? 0}%). Aguarde a conclusão.`);
-                return;
-              }
               onAdd(asset);
             }}
           >

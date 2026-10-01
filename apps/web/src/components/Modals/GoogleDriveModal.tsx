@@ -64,16 +64,8 @@ export const GoogleDriveModal: React.FC = () => {
   if (!isDrivePickerOpen) return null;
 
   const handleSelectVideo = async (file: GoogleDriveFile) => {
-    if (importingFileId) return;
-    setImportingFileId(file.id);
-    try {
-      const asset = await importDriveAssetToMemory(file, { addToTimeline: true });
-      if (asset) {
-        setIsDrivePickerOpen(false);
-      }
-    } finally {
-      setImportingFileId(null);
-    }
+    setIsDrivePickerOpen(false);
+    await importDriveAssetToMemory(file, { addToTimeline: true });
   };
 
   const handleSaveCredentials = () => {

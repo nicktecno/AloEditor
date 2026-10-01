@@ -11,6 +11,7 @@ import {
   InspectorTab,
   SavedProjectMeta,
   PlaybackQuality,
+  BackgroundDownloadItem,
 } from '@/types/editor';
 import { INITIAL_PROJECT } from '@/data/initialData';
 import {
@@ -149,6 +150,7 @@ interface EditorContextType {
   isDriveProjectsLoading: boolean;
   loadDriveProjectsList: () => Promise<void>;
   loadProjectFromDrive: (fileId: string) => Promise<void>;
+  backgroundDownloads: BackgroundDownloadItem[];
   newProject: () => void;
   clearTimeline: () => void;
   undo: () => void;
@@ -263,6 +265,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [localProjects, setLocalProjects] = useState<SavedProjectMeta[]>([]);
   const [driveProjects, setDriveProjects] = useState<Array<{ id: string; name: string; modifiedTime: string; size?: string; webViewLink?: string }>>([]);
   const [isDriveProjectsLoading, setIsDriveProjectsLoading] = useState(false);
+  const [backgroundDownloads, setBackgroundDownloads] = useState<BackgroundDownloadItem[]>([]);
 
   // Helper to remove ephemeral blob: URLs before saving to localStorage
   const sanitizeProjectForStorage = useCallback((proj: Project): Project => {
@@ -1213,12 +1216,6 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Add clip to track (supports optional targetStartTime for drag & drop onto timeline)
   const addClipToTrack = useCallback((asset: MediaAsset, targetTrackId?: string, targetStartTime?: number) => {
-    // ENQUANTO A MÍDIA NÃO ESTIVER TOTALMENTE IMPORTADA EM MEMÓRIA, NÃO PODE SER ADICIONADA!
-    if (asset.status === 'importing' || ((asset.preloadProgress ?? 100) < 100 && !asset.proxyUrl && !asset.url?.startsWith('blob:'))) {
-      alert(`A mídia "${asset.name}" ainda está sendo importada para a memória (${asset.preloadProgress ?? 0}%). Por favor, aguarde a conclusão do download para adicioná-la à linha do tempo.`);
-      return;
-    }
-
     const isVideo = asset.type === 'video';
     const isAudio = asset.type === 'audio';
 
@@ -1898,7 +1895,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return readyAsset;
       }
 
-      // 2. Mídia precisa ser baixada: cria como 'importing' para feedback visual imediato
+      // 2. Mídia liberada IMEDIATAMENTE para a timeline via streaming HTTP 206 enquanto baixa em segundo plano
       const initialAsset: MediaAsset = {
         id: assetId,
         name: file.name,
@@ -1907,110 +1904,134 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         driveFileId: file.id,
         duration: file.durationSeconds || 15.0,
         isDrive: true,
-        status: 'importing',
+        status: 'ready', // LIBERADO IMEDIATAMENTE!
         preloadProgress: 5,
+        loadedBytes: 0,
         thumbnailUrl: file.thumbnailUrl || (file.mimeType.startsWith('audio') ? undefined : GENERIC_VIDEO_THUMBNAIL),
         size: file.sizeBytes,
       };
 
+      // Adiciona imediatamente ao projeto e à timeline
       addAsset(initialAsset);
-      setIsLoading(true, `Importando "${file.name}" para a memória (5%)...`);
+      if (options?.addToTimeline !== false) {
+        addClipToTrack(initialAsset, options?.targetTrackId, options?.targetStartTime);
+      }
 
-      try {
-        let blobUrl: string;
+      // Registra na barra de progresso em background
+      const totalBytesExpected = file.sizeBytes || 0;
+      setBackgroundDownloads((prev) => [
+        ...prev.filter((d) => d.assetId !== assetId),
+        {
+          assetId,
+          name: file.name,
+          percent: 5,
+          loadedBytes: 0,
+          totalBytes: totalBytesExpected,
+        },
+      ]);
 
+      // 3. Executa o download em segundo plano com multi-stream paralelo (NÃO bloqueia o usuário!)
+      (async () => {
         try {
-          blobUrl = await preloadDriveVideo({
-            fileId: file.id,
-            streamUrl,
-            token: activeToken,
-            onProgress: (pct, loaded, total) => {
-              const sizeInfo = total && total > 0
-                ? ` (${(loaded! / (1024 * 1024)).toFixed(0)} MB / ${(total / (1024 * 1024)).toFixed(0)} MB - ${pct}%)`
-                : ` (${pct}%)`;
-              setIsLoading(true, `Importando "${file.name}" para a memória${sizeInfo}...`);
-              setProject((prev) => ({
-                ...prev,
-                assets: prev.assets.map((a) =>
-                  a.id === assetId
-                    ? { ...a, preloadProgress: pct, status: pct >= 100 ? 'ready' : 'importing' }
-                    : a
-                ),
-              }));
-            },
-          });
-        } catch (initialErr: any) {
-          const isAuthErr =
-            initialErr?.message?.includes('expirada') ||
-            initialErr?.message?.includes('401') ||
-            initialErr?.message?.includes('autenticação');
+          let blobUrl: string;
 
-          if (isAuthErr) {
-            console.warn('[Import] Sessão expirada durante importação, tentando renovar token do Google...');
-            const freshToken = await refreshGoogleToken(false);
-            if (freshToken) {
-              const freshStreamUrl = getDriveStreamUrl(file.id, freshToken);
-              blobUrl = await preloadDriveVideo({
-                fileId: file.id,
-                streamUrl: freshStreamUrl,
-                token: freshToken,
-                onProgress: (pct, loaded, total) => {
-                  const sizeInfo = total && total > 0
-                    ? ` (${(loaded! / (1024 * 1024)).toFixed(0)} MB / ${(total / (1024 * 1024)).toFixed(0)} MB - ${pct}%)`
-                    : ` (${pct}%)`;
-                  setIsLoading(true, `Importando "${file.name}" para a memória${sizeInfo}...`);
-                  setProject((prev) => ({
-                    ...prev,
-                    assets: prev.assets.map((a) =>
-                      a.id === assetId
-                        ? { ...a, preloadProgress: pct, status: pct >= 100 ? 'ready' : 'importing' }
-                        : a
-                    ),
-                  }));
-                },
-              });
+          try {
+            blobUrl = await preloadDriveVideo({
+              fileId: file.id,
+              streamUrl,
+              token: activeToken,
+              onProgress: (pct, loaded, total) => {
+                const totalBytes = total || totalBytesExpected;
+                const loadedBytes = loaded || Math.round((pct / 100) * totalBytes);
+                setBackgroundDownloads((prev) =>
+                  prev.map((d) =>
+                    d.assetId === assetId
+                      ? { ...d, percent: pct, loadedBytes, totalBytes }
+                      : d
+                  )
+                );
+                setProject((prev) => ({
+                  ...prev,
+                  assets: prev.assets.map((a) =>
+                    a.id === assetId
+                      ? { ...a, preloadProgress: pct, loadedBytes }
+                      : a
+                  ),
+                }));
+              },
+            });
+          } catch (initialErr: any) {
+            const isAuthErr =
+              initialErr?.message?.includes('expirada') ||
+              initialErr?.message?.includes('401') ||
+              initialErr?.message?.includes('autenticação');
+
+            if (isAuthErr) {
+              const freshToken = await refreshGoogleToken(false);
+              if (freshToken) {
+                const freshStreamUrl = getDriveStreamUrl(file.id, freshToken);
+                blobUrl = await preloadDriveVideo({
+                  fileId: file.id,
+                  streamUrl: freshStreamUrl,
+                  token: freshToken,
+                  onProgress: (pct, loaded, total) => {
+                    const totalBytes = total || totalBytesExpected;
+                    const loadedBytes = loaded || Math.round((pct / 100) * totalBytes);
+                    setBackgroundDownloads((prev) =>
+                      prev.map((d) =>
+                        d.assetId === assetId
+                          ? { ...d, percent: pct, loadedBytes, totalBytes }
+                          : d
+                      )
+                    );
+                    setProject((prev) => ({
+                      ...prev,
+                      assets: prev.assets.map((a) =>
+                        a.id === assetId
+                          ? { ...a, preloadProgress: pct, loadedBytes }
+                          : a
+                      ),
+                    }));
+                  },
+                });
+              } else {
+                throw initialErr;
+              }
             } else {
               throw initialErr;
             }
-          } else {
-            throw initialErr;
           }
+
+          // 4. Download em memória concluído! Promove o vídeo para o blob local de latência zero
+          setProject((prev) => ({
+            ...prev,
+            assets: prev.assets.map((a) =>
+              a.id === assetId
+                ? {
+                    ...a,
+                    url: blobUrl,
+                    proxyUrl: blobUrl,
+                    status: 'ready',
+                    preloadProgress: 100,
+                    loadedBytes: a.size || 0,
+                  }
+                : a
+            ),
+          }));
+
+          // Remove da lista de downloads ativos após um pequeno delay para mostrar 100%
+          setTimeout(() => {
+            setBackgroundDownloads((prev) => prev.filter((d) => d.assetId !== assetId));
+          }, 1500);
+        } catch (err: any) {
+          console.warn('[BackgroundDownload] Download em background falhou, vídeo continuará funcionando via streaming direto:', err);
+          setBackgroundDownloads((prev) => prev.filter((d) => d.assetId !== assetId));
         }
+      })();
 
-        // 3. Download 100% concluído em memória (Blob local)
-        const readyAsset: MediaAsset = {
-          ...initialAsset,
-          url: blobUrl,
-          proxyUrl: blobUrl,
-          status: 'ready',
-          preloadProgress: 100,
-        };
-
-        setProject((prev) => ({
-          ...prev,
-          assets: prev.assets.map((a) => (a.id === assetId ? readyAsset : a)),
-        }));
-
-        setIsLoading(false);
-
-        // 4. Somente agora que a mídia está 100% em memória, adiciona à timeline!
-        if (options?.addToTimeline !== false) {
-          addClipToTrack(readyAsset, options?.targetTrackId, options?.targetStartTime);
-        }
-
-        return readyAsset;
-      } catch (err: any) {
-        setIsLoading(false);
-        setProject((prev) => ({
-          ...prev,
-          assets: prev.assets.filter((a) => a.id !== assetId),
-        }));
-        console.error('Falha ao importar vídeo do Drive para a memória:', err);
-        alert(`Falha ao importar vídeo para a memória: ${err?.message || 'Erro de conexão ou formato no Google Drive.'}`);
-        return null;
-      }
+      return initialAsset;
     },
-    [googleAccessToken, addAsset, setIsLoading, addClipToTrack, refreshGoogleToken]
+    [googleAccessToken, addAsset, addClipToTrack, refreshGoogleToken]
   );
 
   // Remove asset from project library (optionally removing associated clips)
@@ -2694,6 +2715,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         isDriveProjectsLoading,
         loadDriveProjectsList,
         loadProjectFromDrive,
+        backgroundDownloads,
         setIsExportModalOpen,
         setIsShortcutsModalOpen,
         setIsDrivePickerOpen,

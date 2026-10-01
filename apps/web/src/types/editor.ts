@@ -4,6 +4,14 @@ export type MediaType = 'video' | 'audio' | 'image' | 'text';
 
 export type PlaybackQuality = 'low' | 'medium' | 'high';
 
+export interface BackgroundDownloadItem {
+  assetId: string;
+  name: string;
+  percent: number;
+  loadedBytes: number;
+  totalBytes: number;
+}
+
 export interface MediaAsset {
   id: string;
   name: string;
@@ -19,6 +27,7 @@ export interface MediaAsset {
   isAuthExpired?: boolean;
   proxyUrl?: string;
   preloadProgress?: number; // 0 to 100
+  loadedBytes?: number;
   status?: 'ready' | 'importing' | 'optimizing' | 'error';
 }
 
