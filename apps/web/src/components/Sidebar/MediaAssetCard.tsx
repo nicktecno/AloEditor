@@ -142,16 +142,36 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
     }
   };
 
+  const isImporting = asset.status === 'importing' || ((asset.preloadProgress ?? 100) < 100 && !asset.proxyUrl && !asset.url?.startsWith('blob:'));
+
   return (
     <div
       className={styles.assetCard}
-      draggable={true}
+      draggable={!isImporting}
       onDragStart={(e) => {
+        if (isImporting) {
+          e.preventDefault();
+          return;
+        }
         e.dataTransfer.setData('application/json', JSON.stringify(asset));
         e.dataTransfer.effectAllowed = 'copy';
       }}
-      onClick={() => onAdd(asset)}
-      title={title || 'Passe o mouse para pré-visualizar • Clique ou arraste para a linha do tempo'}
+      onClick={() => {
+        if (isImporting) {
+          alert(`A mídia "${asset.name}" ainda está sendo importada para a memória (${asset.preloadProgress ?? 0}%). Por favor, aguarde.`);
+          return;
+        }
+        onAdd(asset);
+      }}
+      style={{
+        opacity: isImporting ? 0.75 : 1,
+        cursor: isImporting ? 'not-allowed' : 'pointer',
+      }}
+      title={
+        isImporting
+          ? `Importando para a memória (${asset.preloadProgress ?? 0}%)... Não pode ser adicionada ainda.`
+          : (title || 'Passe o mouse para pré-visualizar • Clique ou arraste para a linha do tempo')
+      }
     >
       <div
         className={styles.thumbnailWrapper}
@@ -210,8 +230,8 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
             : `${duration.toFixed(1)}s`}
         </div>
 
-        {/* Full Importing Overlay (only if no playable stream/proxy URL exists yet) */}
-        {isVideo && asset.status === 'importing' && !asset.url && !asset.proxyUrl && (
+        {/* Full Importing Overlay (enquanto baixa para a memória) */}
+        {isImporting && (
           <div className={styles.importingOverlay} onClick={(e) => e.stopPropagation()}>
             <div className={styles.importingSpinner} />
             <div className={styles.importingTextGroup}>
@@ -224,7 +244,7 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
                 style={{ width: `${Math.max(6, asset.preloadProgress ?? 0)}%` }}
               />
             </div>
-            <span className={styles.importingSub}>Gerando cache otimizado</span>
+            <span className={styles.importingSub}>Carregando em memória</span>
           </div>
         )}
 
@@ -243,11 +263,11 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
             <span>
               {asset.isAuthExpired
                 ? 'DRIVE EXPIRADO'
+                : isImporting
+                ? `BAIXANDO ${asset.preloadProgress ?? 0}%`
                 : asset.proxyUrl
-                ? 'DRIVE • CACHE'
-                : (asset.preloadProgress && asset.preloadProgress < 100
-                ? `IMPORTANDO ${asset.preloadProgress}%`
-                : 'DRIVE')}
+                ? 'DRIVE • MEMÓRIA'
+                : 'DRIVE'}
             </span>
           </div>
         ) : asset.proxyUrl ? (
@@ -279,9 +299,18 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
           <button
             type="button"
             className={styles.addBtnCircle}
-            title="Adicionar à Linha do Tempo"
+            disabled={isImporting}
+            style={{
+              opacity: isImporting ? 0.35 : 1,
+              cursor: isImporting ? 'not-allowed' : 'pointer',
+            }}
+            title={isImporting ? 'Mídia ainda sendo baixada para a memória' : 'Adicionar à Linha do Tempo'}
             onClick={(e) => {
               e.stopPropagation();
+              if (isImporting) {
+                alert(`A mídia "${asset.name}" ainda está sendo importada para a memória (${asset.preloadProgress ?? 0}%). Aguarde a conclusão.`);
+                return;
+              }
               onAdd(asset);
             }}
           >

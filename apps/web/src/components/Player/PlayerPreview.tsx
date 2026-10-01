@@ -827,6 +827,12 @@ export const PlayerPreview: React.FC = () => {
   };
 
   const frameClass = ratioClassMap[project.settings.aspectRatio] || styles.frame16x9;
+  const qualityClass =
+    previewQuality === 'low'
+      ? styles.qualityLow
+      : previewQuality === 'medium'
+      ? styles.qualityMedium
+      : '';
 
   return (
     <div
@@ -836,7 +842,7 @@ export const PlayerPreview: React.FC = () => {
     >
       <div
         ref={frameRef}
-        className={`${styles.aspectFrame} ${frameClass}`}
+        className={`${styles.aspectFrame} ${frameClass} ${qualityClass}`}
         onClick={(e) => {
           // Tap on video or background toggles play/pause
           if (!draggingTextId && (e.target === frameRef.current || (e.target as HTMLElement).tagName === 'VIDEO')) {
@@ -844,6 +850,11 @@ export const PlayerPreview: React.FC = () => {
           }
         }}
       >
+        {/* Preview Quality Indicator Badge */}
+        <div className={styles.previewQualityBadge} title="Resolução do Preview no Player">
+          <span className={styles.qualityDot} />
+          <span>{previewQuality === 'low' ? 'Preview 360p Otimizado' : previewQuality === 'medium' ? 'Preview 540p Fluido' : 'Preview 1080p Original'}</span>
+        </div>
         {/* Importing Floating Pill (Only when no playable stream/proxy URL exists yet) */}
         {mainAsset && !mainAsset.proxyUrl && !mainAsset.url && mainAsset.status === 'importing' && (
           <div className={styles.playerImportingOverlay}>

@@ -126,6 +126,10 @@ interface EditorContextType {
   duplicateClip: (clipId: string) => void;
   detachAudioFromClip: (clipId: string) => void;
   addAsset: (asset: MediaAsset) => void;
+  importDriveAssetToMemory: (
+    file: GoogleDriveFile,
+    options?: { addToTimeline?: boolean; targetTrackId?: string; targetStartTime?: number }
+  ) => Promise<MediaAsset | null>;
   removeAsset: (assetId: string, deleteAssociatedClips?: boolean) => void;
   updateAssetThumbnail: (assetId: string, thumbnailUrl: string) => void;
   syncMediaDuration: (assetId: string, realDuration: number) => void;
@@ -1209,6 +1213,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Add clip to track (supports optional targetStartTime for drag & drop onto timeline)
   const addClipToTrack = useCallback((asset: MediaAsset, targetTrackId?: string, targetStartTime?: number) => {
+    // ENQUANTO A MÍDIA NÃO ESTIVER TOTALMENTE IMPORTADA EM MEMÓRIA, NÃO PODE SER ADICIONADA!
+    if (asset.status === 'importing' || ((asset.preloadProgress ?? 100) < 100 && !asset.proxyUrl && !asset.url?.startsWith('blob:'))) {
+      alert(`A mídia "${asset.name}" ainda está sendo importada para a memória (${asset.preloadProgress ?? 0}%). Por favor, aguarde a conclusão do download para adicioná-la à linha do tempo.`);
+      return;
+    }
+
     const isVideo = asset.type === 'video';
     const isAudio = asset.type === 'audio';
 
@@ -1804,7 +1814,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [project.clips, updateProjectWithHistory, setSelectedClipIds]
   );
 
-  // Add asset (Disponibiliza mídia imediatamente para reprodução, sem travar em 'importing')
+  // Add asset (Preserva status e progresso de importação para evitar adicionar mídias incompletas)
   const addAsset = useCallback(
     (asset: MediaAsset) => {
       const isVideo = asset.type === 'video';
@@ -1817,8 +1827,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         isOffline: false,
         isAuthExpired: false,
         thumbnailUrl: asset.thumbnailUrl || (isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined),
-        status: 'ready', // Imediatamente pronto para edição e reprodução!
-        preloadProgress: 100, // 100% pronto na hora, sem travar em 5%
+        status: asset.status || 'ready',
+        preloadProgress: asset.preloadProgress !== undefined ? asset.preloadProgress : 100,
       };
 
       updateProjectWithHistory((prev) => ({
@@ -1831,8 +1841,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     isOffline: false,
                     isAuthExpired: false,
                     url: assetWithThumb.url,
-                    status: 'ready',
-                    preloadProgress: 100,
+                    proxyUrl: assetWithThumb.proxyUrl || a.proxyUrl,
+                    status: assetWithThumb.status,
+                    preloadProgress: assetWithThumb.preloadProgress,
                   }
                 : a
             )
@@ -1840,11 +1851,122 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
 
       // No mobile, o streaming nativo com Range requests pelo navegador é leve e não estoura a RAM
-      if (isVideo && !isMobile) {
+      if (isVideo && !isMobile && assetWithThumb.status === 'ready' && !assetWithThumb.proxyUrl) {
         startAssetCaching(assetWithThumb);
       }
     },
     [updateProjectWithHistory, startAssetCaching]
+  );
+
+  // Importa mídia do Google Drive TOTALMENTE para a memória local (Blob URL) antes de disponibilizar para adição
+  const importDriveAssetToMemory = useCallback(
+    async (
+      file: GoogleDriveFile,
+      options?: { addToTimeline?: boolean; targetTrackId?: string; targetStartTime?: number }
+    ): Promise<MediaAsset | null> => {
+      const activeToken =
+        googleAccessToken ||
+        (typeof window !== 'undefined'
+          ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
+          : null);
+
+      const streamUrl = getDriveStreamUrl(file.id, activeToken);
+      const assetId = `asset_drive_${file.id}`;
+
+      // 1. Se já existe no cache em memória ou IndexedDB, reutiliza imediatamente
+      const cachedUrl = await getCachedDriveVideoUrl(file.id);
+      if (cachedUrl) {
+        const readyAsset: MediaAsset = {
+          id: assetId,
+          name: file.name,
+          type: file.mimeType.startsWith('audio') ? 'audio' : 'video',
+          url: cachedUrl,
+          proxyUrl: cachedUrl,
+          driveFileId: file.id,
+          duration: file.durationSeconds || 15.0,
+          isDrive: true,
+          status: 'ready',
+          preloadProgress: 100,
+          thumbnailUrl: file.thumbnailUrl || (file.mimeType.startsWith('audio') ? undefined : GENERIC_VIDEO_THUMBNAIL),
+          size: file.sizeBytes,
+        };
+
+        addAsset(readyAsset);
+        if (options?.addToTimeline !== false) {
+          addClipToTrack(readyAsset, options?.targetTrackId, options?.targetStartTime);
+        }
+        return readyAsset;
+      }
+
+      // 2. Mídia precisa ser baixada: cria como 'importing' para feedback visual imediato
+      const initialAsset: MediaAsset = {
+        id: assetId,
+        name: file.name,
+        type: file.mimeType.startsWith('audio') ? 'audio' : 'video',
+        url: streamUrl,
+        driveFileId: file.id,
+        duration: file.durationSeconds || 15.0,
+        isDrive: true,
+        status: 'importing',
+        preloadProgress: 5,
+        thumbnailUrl: file.thumbnailUrl || (file.mimeType.startsWith('audio') ? undefined : GENERIC_VIDEO_THUMBNAIL),
+        size: file.sizeBytes,
+      };
+
+      addAsset(initialAsset);
+      setIsLoading(true, `Importando "${file.name}" para a memória (5%)...`);
+
+      try {
+        const blobUrl = await preloadDriveVideo({
+          fileId: file.id,
+          streamUrl,
+          token: activeToken,
+          onProgress: (pct) => {
+            setIsLoading(true, `Importando "${file.name}" para a memória (${pct}%)...`);
+            setProject((prev) => ({
+              ...prev,
+              assets: prev.assets.map((a) =>
+                a.id === assetId
+                  ? { ...a, preloadProgress: pct, status: pct >= 100 ? 'ready' : 'importing' }
+                  : a
+              ),
+            }));
+          },
+        });
+
+        // 3. Download 100% concluído em memória (Blob local)
+        const readyAsset: MediaAsset = {
+          ...initialAsset,
+          url: blobUrl,
+          proxyUrl: blobUrl,
+          status: 'ready',
+          preloadProgress: 100,
+        };
+
+        setProject((prev) => ({
+          ...prev,
+          assets: prev.assets.map((a) => (a.id === assetId ? readyAsset : a)),
+        }));
+
+        setIsLoading(false);
+
+        // 4. Somente agora que a mídia está 100% em memória, adiciona à timeline!
+        if (options?.addToTimeline !== false) {
+          addClipToTrack(readyAsset, options?.targetTrackId, options?.targetStartTime);
+        }
+
+        return readyAsset;
+      } catch (err: any) {
+        setIsLoading(false);
+        setProject((prev) => ({
+          ...prev,
+          assets: prev.assets.filter((a) => a.id !== assetId),
+        }));
+        alert(`Falha ao importar vídeo para a memória: ${err?.message || 'Erro de conexão'}`);
+        return null;
+      }
+    },
+    [googleAccessToken, addAsset, setIsLoading, addClipToTrack]
   );
 
   // Remove asset from project library (optionally removing associated clips)
@@ -2509,6 +2631,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         duplicateClip,
         detachAudioFromClip,
         addAsset,
+        importDriveAssetToMemory,
         removeAsset,
         updateAssetThumbnail,
         syncMediaDuration,

@@ -47,6 +47,7 @@ export const MediaPanel: React.FC = () => {
     addClipToTrack,
     addTextClip,
     addAsset,
+    importDriveAssetToMemory,
     removeAsset,
     updateAssetThumbnail,
     syncMediaDuration,
@@ -71,7 +72,7 @@ export const MediaPanel: React.FC = () => {
   const [driveUrlInput, setDriveUrlInput] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleImportDriveUrl = () => {
+  const handleImportDriveUrl = async () => {
     const input = driveUrlInput.trim();
     if (!input) return;
 
@@ -82,31 +83,22 @@ export const MediaPanel: React.FC = () => {
     }
 
     const fileId = match[0];
-    const savedToken =
-      googleAccessToken ||
-      (typeof window !== 'undefined'
-        ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
-        : '') ||
-      '';
-
-    const newAsset: MediaAsset = {
-      id: `asset_drive_${fileId}_${Date.now()}`,
-      name: `Drive_Video_${fileId.substring(0, 6)}.mp4`,
-      type: 'video',
-      url: getDriveStreamUrl(fileId, savedToken),
-      driveFileId: fileId,
-      duration: 15.0,
-      isDrive: true,
-      status: 'ready',
-      preloadProgress: 100,
-      thumbnailUrl: `https://drive.google.com/thumbnail?id=${fileId}&sz=w640`,
-    };
-
-    addAsset(newAsset);
-    addClipToTrack(newAsset);
     setDriveUrlInput('');
     setIsUrlInputOpen(false);
-    showFeedback('Vídeo do Google Drive pronto para edição!');
+    showFeedback('Baixando vídeo do Google Drive para a memória...');
+
+    const virtualFile: GoogleDriveFile = {
+      id: fileId,
+      name: `Drive_Video_${fileId.substring(0, 6)}.mp4`,
+      mimeType: 'video/mp4',
+      sizeBytes: 0,
+      durationSeconds: 15.0,
+    };
+
+    const asset = await importDriveAssetToMemory(virtualFile, { addToTimeline: true });
+    if (asset) {
+      showFeedback('Vídeo importado para a memória e pronto para edição!');
+    }
   };
 
   const showFeedback = (msg: string) => {
@@ -299,29 +291,12 @@ export const MediaPanel: React.FC = () => {
     }
   };
 
-  const handleSelectDriveFile = (file: GoogleDriveFile) => {
-    const savedToken =
-      googleAccessToken ||
-      (typeof window !== 'undefined'
-        ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
-        : '') ||
-      '';
-    const streamUrl = getDriveStreamUrl(file.id, savedToken);
-    const newAsset: MediaAsset = {
-      id: `asset_drive_${file.id}`,
-      name: file.name,
-      type: file.mimeType.startsWith('audio') ? 'audio' : 'video',
-      url: streamUrl,
-      driveFileId: file.id,
-      duration: file.durationSeconds || 15.0,
-      isDrive: true,
-      status: 'ready',
-      preloadProgress: 100,
-      thumbnailUrl: file.thumbnailUrl || `https://drive.google.com/thumbnail?id=${file.id}&sz=w640`,
-      size: file.sizeBytes,
-    };
-    addAsset(newAsset);
-    addClipToTrack(newAsset);
+  const handleSelectDriveFile = async (file: GoogleDriveFile) => {
+    showFeedback(`Baixando "${file.name}" para a memória...`);
+    const asset = await importDriveAssetToMemory(file, { addToTimeline: true });
+    if (asset) {
+      showFeedback(`"${file.name}" importado com sucesso!`);
+    }
   };
 
   const driveCount = driveVideos.length > 0 ? driveVideos.length : project.assets.filter((a) => a.isDrive).length;

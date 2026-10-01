@@ -37,6 +37,7 @@ export const GoogleDriveModal: React.FC = () => {
     isDriveConnected,
     addAsset,
     addClipToTrack,
+    importDriveAssetToMemory,
     driveVideos,
     isDriveLoading,
     loadDriveVideos,
@@ -46,6 +47,7 @@ export const GoogleDriveModal: React.FC = () => {
   const [clientIdInput, setClientIdInput] = useState(googleClientId || '');
   const [apiKeyInput, setApiKeyInput] = useState(googleApiKey || '');
   const [copiedOrigin, setCopiedOrigin] = useState(false);
+  const [importingFileId, setImportingFileId] = useState<string | null>(null);
 
   useEffect(() => {
     setClientIdInput(googleClientId || '');
@@ -61,23 +63,17 @@ export const GoogleDriveModal: React.FC = () => {
 
   if (!isDrivePickerOpen) return null;
 
-  const handleSelectVideo = (file: GoogleDriveFile) => {
-    const streamUrl = getDriveStreamUrl(file.id, googleAccessToken);
-    const newAsset: MediaAsset = {
-      id: `asset_drive_${file.id}`,
-      name: file.name,
-      type: file.mimeType.startsWith('audio') ? 'audio' : 'video',
-      url: streamUrl,
-      driveFileId: file.id,
-      duration: file.durationSeconds || 15.0,
-      isDrive: true,
-      thumbnailUrl: file.thumbnailUrl || (file.mimeType.startsWith('audio') ? undefined : GENERIC_VIDEO_THUMBNAIL),
-      size: file.sizeBytes,
-    };
-
-    addAsset(newAsset);
-    addClipToTrack(newAsset);
-    setIsDrivePickerOpen(false);
+  const handleSelectVideo = async (file: GoogleDriveFile) => {
+    if (importingFileId) return;
+    setImportingFileId(file.id);
+    try {
+      const asset = await importDriveAssetToMemory(file, { addToTimeline: true });
+      if (asset) {
+        setIsDrivePickerOpen(false);
+      }
+    } finally {
+      setImportingFileId(null);
+    }
   };
 
   const handleSaveCredentials = () => {
@@ -230,32 +226,62 @@ export const GoogleDriveModal: React.FC = () => {
                     </div>
                   ) : driveVideos.length > 0 ? (
                     <div className={styles.driveBrowserGrid} style={{ maxHeight: '280px', overflowY: 'auto' }}>
-                      {driveVideos.map((video) => (
-                        <div
-                          key={video.id}
-                          className={styles.driveFileCard}
-                          onClick={() => handleSelectVideo(video)}
-                          title="Clique para adicionar à linha do tempo"
-                        >
-                          <img
-                            src={video.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
-                            alt={video.name}
-                            className={styles.driveThumb}
-                            onError={handleThumbnailError}
-                          />
-                          <div className={styles.driveFileInfo}>
-                            <span className={styles.driveFileName} title={video.name}>
-                              {video.name}
-                            </span>
-                            <span className={styles.driveFileMeta}>
-                              {video.sizeBytes ? `${(video.sizeBytes / (1024 * 1024)).toFixed(1)} MB` : 'Vídeo'}
-                            </span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '3px', color: 'var(--accent-cyan)', fontSize: '10px', marginTop: '2px', fontWeight: 600 }}>
-                              <Plus size={10} /> Inserir no Editor
+                      {driveVideos.map((video) => {
+                        const isCurrentImporting = importingFileId === video.id;
+                        return (
+                          <div
+                            key={video.id}
+                            className={styles.driveFileCard}
+                            onClick={() => !importingFileId && handleSelectVideo(video)}
+                            style={{
+                              opacity: importingFileId && !isCurrentImporting ? 0.4 : 1,
+                              pointerEvents: importingFileId ? 'none' : 'auto',
+                              cursor: importingFileId ? 'not-allowed' : 'pointer',
+                              position: 'relative',
+                            }}
+                            title={isCurrentImporting ? 'Baixando para a memória...' : 'Clique para importar e adicionar à linha do tempo'}
+                          >
+                            <img
+                              src={video.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
+                              alt={video.name}
+                              className={styles.driveThumb}
+                              onError={handleThumbnailError}
+                            />
+                            {isCurrentImporting && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  inset: 0,
+                                  background: 'rgba(10, 15, 29, 0.85)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  borderRadius: '8px',
+                                  gap: '6px',
+                                  zIndex: 10,
+                                }}
+                              >
+                                <RefreshCw size={18} className={styles.spinAnimation} color="var(--accent-cyan)" />
+                                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent-cyan)' }}>
+                                  Baixando...
+                                </span>
+                              </div>
+                            )}
+                            <div className={styles.driveFileInfo}>
+                              <span className={styles.driveFileName} title={video.name}>
+                                {video.name}
+                              </span>
+                              <span className={styles.driveFileMeta}>
+                                {video.sizeBytes ? `${(video.sizeBytes / (1024 * 1024)).toFixed(1)} MB` : 'Vídeo'}
+                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', color: 'var(--accent-cyan)', fontSize: '10px', marginTop: '2px', fontWeight: 600 }}>
+                                <Plus size={10} /> {isCurrentImporting ? 'Importando...' : 'Inserir no Editor'}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div style={{ padding: '24px', textAlign: 'center', background: 'var(--bg-panel)', borderRadius: '8px', border: '1px dashed var(--border-default)' }}>

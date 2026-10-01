@@ -813,5 +813,46 @@
   user-select: none;
 }
 
+/* Optimized preview downscaling (low/medium resolution) */
+.qualityLow {
+  max-width: min(100%, 640px) !important;
+  max-height: min(100%, 360px) !important;
+  image-rendering: -webkit-optimize-contrast;
+  contain: paint layout size;
+}
+
+.qualityMedium {
+  max-width: min(100%, 960px) !important;
+  max-height: min(100%, 540px) !important;
+  contain: paint layout size;
+}
+
+.previewQualityBadge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+  z-index: 8;
+  pointer-events: none;
+  user-select: none;
+}
+
+.qualityDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
 
 

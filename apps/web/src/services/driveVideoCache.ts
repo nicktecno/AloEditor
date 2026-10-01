@@ -221,78 +221,75 @@ export async function preloadDriveVideo({
 
   const task = (async () => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout para downloads em segundo plano
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout para downloads em memória
 
     try {
-      let response: Response | null = null;
       const activeToken =
         (token && token.length > 10 ? token : null) ||
         (typeof window !== 'undefined'
           ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
           : null);
 
-      // 1. Tenta download direto pelo CDN do Google (0% de CPU e 0 MB de tráfego na Vercel)
+      const fetchHeaders: Record<string, string> = {};
       if (activeToken && activeToken.length > 10) {
-        try {
-          const directUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
-          const directRes = await fetch(directUrl, {
-            headers: {
-              Authorization: `Bearer ${activeToken}`,
-            },
-            signal: controller.signal,
-          });
-          if (directRes.ok) {
-            response = directRes;
-          }
-        } catch {
-          // Fallback para streaming da rota Next.js
-        }
+        fetchHeaders['Authorization'] = `Bearer ${activeToken}`;
       }
 
-      // 1.1 Se não houver token mas for arquivo público, tenta download direto do Google Drive
-      if (!response || !response.ok) {
-        try {
-          const pubUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-          const pubRes = await fetch(pubUrl, {
-            signal: controller.signal,
-          });
-          if (pubRes.ok) {
-            response = pubRes;
-          }
-        } catch {}
-      }
+      onProgress?.(5);
 
-      // 2. Se o download direto do Google falhou, utiliza a rota /api/drive/stream como último recurso
-      if (!response || !response.ok) {
-        const fetchHeaders: Record<string, string> = {};
-        if (activeToken && activeToken.length > 10) {
-          fetchHeaders['Authorization'] = `Bearer ${activeToken}`;
-        }
-        onProgress?.(30);
-        response = await fetch(streamUrl, {
-          headers: fetchHeaders,
-          signal: controller.signal,
-        });
-      }
+      const targetUrl = streamUrl.includes('token=') || !activeToken
+        ? streamUrl
+        : `${streamUrl}${streamUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(activeToken)}`;
 
-      if (response.status === 401) {
-        throw new Error(`AUTH_EXPIRED: Sessão do Google Drive expirada (HTTP ${response.status})`);
+      const response = await fetch(targetUrl, {
+        headers: fetchHeaders,
+        signal: controller.signal,
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('Sessão do Google Drive expirada. Por favor, conecte sua conta Google.');
       }
 
       if (!response.ok) {
-        // Se a rota falhar mas tivermos streamUrl, retorna a própria streamUrl para reprodução direta sem travar
-        console.warn(`Streaming response not ok: HTTP ${response.status}. Usando streaming direto.`);
-        onProgress?.(100);
-        return streamUrl;
+        throw new Error(`Falha ao baixar vídeo do Drive (HTTP ${response.status})`);
       }
 
       const contentType = response.headers.get('content-type') || 'video/mp4';
-      onProgress?.(60);
+      if (contentType.includes('text/html')) {
+        throw new Error('O Google Drive exigiu autenticação ou retornou aviso HTML. Por favor, faça login com o Google.');
+      }
 
-      // Leitura nativa em C++ pelo navegador (mais rápida e sem estouro de heap no mobile)
-      const finalBlob = await response.blob();
-      onProgress?.(85);
+      const contentLengthHeader = response.headers.get('content-length');
+      const totalBytes = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
+      let loadedBytes = 0;
+      const chunks: Uint8Array[] = [];
 
+      if (response.body && typeof response.body.getReader === 'function') {
+        const reader = response.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            loadedBytes += value.length;
+            if (totalBytes > 0) {
+              const pct = Math.min(98, Math.round((loadedBytes / totalBytes) * 100));
+              onProgress?.(pct);
+            } else {
+              // Progresso incremental suave se o tamanho total não foi enviado
+              const syntheticPct = Math.min(95, Math.round(loadedBytes / (1024 * 1024 * 5)));
+              onProgress?.(syntheticPct);
+            }
+          }
+        }
+      } else {
+        const blob = await response.blob();
+        chunks.push(new Uint8Array(await blob.arrayBuffer()));
+      }
+
+      onProgress?.(99);
+
+      const finalBlob = new Blob(chunks as BlobPart[], { type: contentType });
       await saveVideoToCache(fileId, finalBlob, contentType);
 
       const blobUrl = URL.createObjectURL(finalBlob);
@@ -301,12 +298,8 @@ export async function preloadDriveVideo({
 
       return blobUrl;
     } catch (err: any) {
-      if (err?.message?.startsWith('AUTH_EXPIRED')) {
-        throw err;
-      }
-      console.warn('Cache em background não completou, usando URL de streaming direta:', err?.message);
-      onProgress?.(100);
-      return streamUrl;
+      console.error('Erro ao baixar mídia do Drive para a memória:', err);
+      throw err;
     } finally {
       clearTimeout(timeoutId);
       activePreloadTasks.delete(fileId);
