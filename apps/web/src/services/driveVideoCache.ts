@@ -220,11 +220,44 @@ export interface PreloadOptions {
 }
 
 /**
+ * Detecta se o dispositivo atual tem recursos limitados (mobile OU desktop com pouca RAM).
+ * Usado para ajustar concorrência e tamanho de chunk automaticamente.
+ * 
+ * Critérios:
+ * 1. Mobile (iPhone/iPad/Android) → sempre considerado low-resource
+ * 2. navigator.deviceMemory ≤ 4GB (Chrome/Edge expõem RAM aproximada)
+ * 3. navigator.hardwareConcurrency ≤ 2 (CPU com poucos cores = máquina fraca)
+ */
+function isLowResourceDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+
+  // Mobile é sempre low-resource (WebKit no iOS tem limites rígidos)
+  if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) return true;
+
+  // Chrome/Edge expõem a quantidade aproximada de RAM do dispositivo em GB
+  // Valores possíveis: 0.25, 0.5, 1, 2, 4, 8 (arredondado pela API)
+  const deviceMemory = (navigator as any).deviceMemory;
+  if (typeof deviceMemory === 'number' && deviceMemory <= 4) return true;
+
+  // CPU com poucos cores geralmente indica máquina fraca
+  if (typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 2) return true;
+
+  return false;
+}
+
+/**
  * Baixa o vídeo utilizando múltiplos blocos paralelos de Range Requests HTTP.
- * Otimizado para alta performance (4x a 8x mais rápido em arquivos grandes como 900MB):
- * 1. Tamanho adaptativo de bloco (16MB para grandes arquivos, diminuindo dezenas de conexões).
- * 2. 4 streams concorrentes em paralelo via multiplexação HTTP/2, saturando a banda da internet.
- * 3. Cada bloco individual leva de 1s a 3s, respeitando com folga o limite de timeout da Vercel.
+ * 
+ * Otimizado para funcionar tanto em desktop quanto em mobile:
+ * - Desktop: 4 streams paralelas, chunks de 16MB (alta performance)
+ * - Mobile:  2 streams paralelas, chunks de 4MB (evita crash de memória no Safari/iOS)
+ * 
+ * Melhorias para estabilidade mobile:
+ * 1. Chunks menores para reduzir pressão de memória por request
+ * 2. Menos conexões paralelas para respeitar limites do WebKit
+ * 3. Liberação imediata de cada chunk após uso (GC-friendly)
+ * 4. Retry com exponential backoff + jitter
+ * 5. Timeout individual por chunk (não global)
  */
 async function downloadViaRangeChunks(
   targetUrl: string,
@@ -234,6 +267,7 @@ async function downloadViaRangeChunks(
 ): Promise<{ blob: Blob; mimeType: string } | null> {
   let totalBytes = 0;
   let contentType = 'video/mp4';
+  const mobile = isLowResourceDevice();
 
   try {
     // 1. Probe inicial rápido: obtém tamanho total e valida suporte a Range
@@ -281,12 +315,26 @@ async function downloadViaRangeChunks(
     return null;
   }
 
-  // 2. Tamanho inteligente de bloco (16MB para vídeos > 150MB, ex: 900MB = ~56 chunks em vez de 225)
-  let chunkSize = 6 * 1024 * 1024; // 6MB padrão
-  if (totalBytes > 150 * 1024 * 1024) {
-    chunkSize = 16 * 1024 * 1024; // 16MB para arquivos grandes
-  } else if (totalBytes > 40 * 1024 * 1024) {
-    chunkSize = 10 * 1024 * 1024; // 10MB para arquivos médios
+  // 2. Tamanho adaptativo de bloco por plataforma
+  let chunkSize: number;
+  if (mobile) {
+    // Mobile: chunks menores para evitar pressão de memória
+    if (totalBytes > 200 * 1024 * 1024) {
+      chunkSize = 4 * 1024 * 1024; // 4MB para arquivos grandes no mobile
+    } else if (totalBytes > 50 * 1024 * 1024) {
+      chunkSize = 3 * 1024 * 1024; // 3MB para arquivos médios no mobile
+    } else {
+      chunkSize = 2 * 1024 * 1024; // 2MB para arquivos pequenos no mobile
+    }
+  } else {
+    // Desktop: chunks grandes para alta performance
+    if (totalBytes > 150 * 1024 * 1024) {
+      chunkSize = 16 * 1024 * 1024; // 16MB para arquivos grandes
+    } else if (totalBytes > 40 * 1024 * 1024) {
+      chunkSize = 10 * 1024 * 1024; // 10MB para arquivos médios
+    } else {
+      chunkSize = 6 * 1024 * 1024; // 6MB padrão
+    }
   }
 
   interface ChunkTask {
@@ -301,59 +349,104 @@ async function downloadViaRangeChunks(
     tasks.push({ index: idx, start, end });
   }
 
+  // Array de blobs — será nulificado incrementalmente para liberar memória
   const chunks: (Blob | null)[] = new Array(tasks.length).fill(null);
   let taskCursor = 0;
   let downloadedBytes = 0;
   let failed = false;
   let failError: any = null;
 
-  // Pool de 4 conexões concorrentes simultâneas (Multi-Stream)
-  const CONCURRENCY = Math.min(4, tasks.length);
+  // Concorrência adaptativa: 2 no mobile, 4 no desktop
+  const CONCURRENCY = mobile
+    ? Math.min(2, tasks.length)
+    : Math.min(4, tasks.length);
+
+  // Timeout individual por chunk: 60s no mobile, 30s no desktop
+  const PER_CHUNK_TIMEOUT_MS = mobile ? 60_000 : 30_000;
+
+  console.log(
+    `[RangeDownload] ${mobile ? 'MOBILE' : 'DESKTOP'} mode: ` +
+    `${tasks.length} chunks × ${formatBytes(chunkSize)}, ` +
+    `${CONCURRENCY} streams, total=${formatBytes(totalBytes)}`
+  );
+
+  async function fetchChunkWithTimeout(
+    task: ChunkTask,
+    parentSignal: AbortSignal
+  ): Promise<Blob> {
+    const chunkController = new AbortController();
+    const rangeHeader = `bytes=${task.start}-${task.end}`;
+
+    // Aborta o chunk se o download principal for cancelado
+    const onParentAbort = () => chunkController.abort();
+    parentSignal.addEventListener('abort', onParentAbort, { once: true });
+
+    // Timeout individual por chunk
+    const timeoutId = setTimeout(() => chunkController.abort(), PER_CHUNK_TIMEOUT_MS);
+
+    try {
+      const chunkRes = await fetch(targetUrl, {
+        headers: {
+          ...fetchHeaders,
+          Range: rangeHeader,
+        },
+        signal: chunkController.signal,
+      });
+
+      if (chunkRes.status === 401 || chunkRes.status === 403) {
+        throw new Error('Sessão do Google Drive expirada.');
+      }
+
+      if (!chunkRes.ok && chunkRes.status !== 206) {
+        throw new Error(`HTTP ${chunkRes.status} no bloco ${rangeHeader}`);
+      }
+
+      return await chunkRes.blob();
+    } finally {
+      clearTimeout(timeoutId);
+      parentSignal.removeEventListener('abort', onParentAbort);
+    }
+  }
 
   async function worker() {
     while (!failed && !signal.aborted) {
       const taskIndex = taskCursor++;
       if (taskIndex >= tasks.length) break;
       const task = tasks[taskIndex];
-      const rangeHeader = `bytes=${task.start}-${task.end}`;
 
       let chunkBlob: Blob | null = null;
       let lastErr: any = null;
 
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      // Retry com exponential backoff + jitter (mais resiliente em redes instáveis)
+      const MAX_RETRIES = mobile ? 5 : 3;
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         if (signal.aborted) return;
         try {
-          const chunkRes = await fetch(targetUrl, {
-            headers: {
-              ...fetchHeaders,
-              Range: rangeHeader,
-            },
-            signal,
-          });
-
-          if (chunkRes.status === 401 || chunkRes.status === 403) {
-            failed = true;
-            failError = new Error('Sessão do Google Drive expirada.');
-            return;
-          }
-
-          if (!chunkRes.ok && chunkRes.status !== 206) {
-            throw new Error(`HTTP ${chunkRes.status} no bloco ${rangeHeader}`);
-          }
-
-          chunkBlob = await chunkRes.blob();
+          chunkBlob = await fetchChunkWithTimeout(task, signal);
           break;
         } catch (e: any) {
           lastErr = e;
-          if (attempt < 3 && !signal.aborted) {
-            await new Promise((r) => setTimeout(r, 400 * attempt));
+          if (e?.message?.includes('Sessão do Google Drive expirada')) {
+            failed = true;
+            failError = e;
+            return;
+          }
+          if (attempt < MAX_RETRIES && !signal.aborted) {
+            // Exponential backoff: 500ms, 1s, 2s, 4s... + jitter aleatório
+            const baseDelay = Math.min(500 * Math.pow(2, attempt - 1), 8000);
+            const jitter = Math.random() * 500;
+            console.warn(
+              `[RangeDownload] Chunk ${task.index} attempt ${attempt} failed, retrying in ${Math.round(baseDelay + jitter)}ms:`,
+              e?.message
+            );
+            await new Promise((r) => setTimeout(r, baseDelay + jitter));
           }
         }
       }
 
       if (!chunkBlob) {
         failed = true;
-        failError = lastErr || new Error(`Falha no bloco ${task.index} (${rangeHeader})`);
+        failError = lastErr || new Error(`Falha no bloco ${task.index}`);
         return;
       }
 
@@ -361,6 +454,11 @@ async function downloadViaRangeChunks(
       downloadedBytes += chunkBlob.size;
       const pct = Math.min(98, Math.round((downloadedBytes / totalBytes) * 100));
       onProgress?.(pct, downloadedBytes, totalBytes);
+
+      // No mobile, dá uma pausa mínima entre chunks para o GC respirar
+      if (mobile && taskIndex % 5 === 4) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
     }
   }
 
@@ -369,10 +467,19 @@ async function downloadViaRangeChunks(
 
   if (failed || chunks.some((c) => c === null)) {
     console.warn('[RangeDownload] Algum bloco falhou no download fatiado:', failError);
+    // Limpa chunks parciais para liberar memória
+    for (let i = 0; i < chunks.length; i++) {
+      chunks[i] = null;
+    }
     return null; // Fallback para streaming contínuo
   }
 
+  // Monta o blob final — no mobile, libera cada chunk imediatamente após cópia
   const finalBlob = new Blob(chunks as Blob[], { type: contentType });
+  // Nulifica referências para permitir GC imediato dos chunks individuais
+  for (let i = 0; i < chunks.length; i++) {
+    chunks[i] = null;
+  }
   onProgress?.(100, totalBytes, totalBytes);
   return { blob: finalBlob, mimeType: contentType };
 }
@@ -403,7 +510,9 @@ export async function preloadDriveVideo({
 
   const task = (async () => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutos de timeout para grandes vídeos em rede móvel
+    // Timeout global adaptativo: 10 minutos no mobile (rede lenta), 5 minutos no desktop
+    const globalTimeout = isLowResourceDevice() ? 600_000 : 300_000;
+    const timeoutId = setTimeout(() => controller.abort(), globalTimeout);
 
     try {
       const activeToken =

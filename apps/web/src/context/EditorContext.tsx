@@ -1935,12 +1935,26 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         try {
           let blobUrl: string;
 
-          try {
+      // Throttle do progresso para evitar flood de re-renders em dispositivos limitados
+      // (cada chunk dispara 2 setState → centenas de re-renders congelam o UI thread)
+      let lastProgressUpdate = 0;
+      const isLowResource =
+        /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+        (typeof (navigator as any).deviceMemory === 'number' && (navigator as any).deviceMemory <= 4) ||
+        (typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 2);
+      const PROGRESS_THROTTLE_MS = isLowResource ? 1000 : 300;
+
+      try {
             blobUrl = await preloadDriveVideo({
               fileId: file.id,
               streamUrl,
               token: activeToken,
               onProgress: (pct, loaded, total) => {
+                const now = Date.now();
+                // Só atualiza UI se passou tempo suficiente OU se completou (100%)
+                if (pct < 100 && now - lastProgressUpdate < PROGRESS_THROTTLE_MS) return;
+                lastProgressUpdate = now;
+
                 const totalBytes = total || totalBytesExpected;
                 const loadedBytes = loaded || Math.round((pct / 100) * totalBytes);
                 setBackgroundDownloads((prev) =>
