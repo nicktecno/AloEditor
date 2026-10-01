@@ -470,6 +470,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     async (asset: MediaAsset) => {
       if (asset.type !== 'video') return;
 
+      const isMobile =
+        typeof window !== 'undefined' &&
+        /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+      if (isMobile) return; // No mobile: streaming nativo leve e instantâneo via Range requests
+
       const cacheKey = asset.driveFileId || asset.id;
       if (activeCachingTasks.current.has(cacheKey)) return;
 
@@ -565,6 +570,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Monitora mídias pendentes de cache no projeto e inicia download progressivo imediatamente
   useEffect(() => {
     if (!isHydrated) return;
+    const isMobile =
+      typeof window !== 'undefined' &&
+      /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+    if (isMobile) return; // No mobile: streaming nativo leve e instantâneo via Range requests
+
     const uncachedVideos = project.assets.filter(
       (a) =>
         a.type === 'video' &&

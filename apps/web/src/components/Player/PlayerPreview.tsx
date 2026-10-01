@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { useEditor } from '@/context/EditorContext';
 import { getClipTransitionState, getClipAudioVolume } from '@/utils/transitionUtils';
 import { processFrameBackgroundRemoval } from '@/utils/backgroundRemoval';
@@ -129,6 +129,7 @@ export const PlayerPreview: React.FC = () => {
     currentTime,
     setCurrentTime,
     isPlaying,
+    togglePlay,
     selectedClipIds,
     selectClip,
     updateClip,
@@ -375,6 +376,13 @@ export const PlayerPreview: React.FC = () => {
   // Compute live transitions and effects
   const mainTrans = activeMainClip ? getClipTransitionState(activeMainClip, currentTime) : null;
   const overlayTrans = activeOverlayClip ? getClipTransitionState(activeOverlayClip, currentTime) : null;
+
+  const hasAnyToken = useMemo(() => {
+    if (googleAccessToken) return true;
+    if (typeof window === 'undefined') return false;
+    const token = localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token');
+    return !!(token && token !== 'null' && token !== 'undefined' && token.length > 10);
+  }, [googleAccessToken]);
 
   const lastMainClipIdRef = useRef<string | null>(null);
   const lastOverlayClipIdRef = useRef<string | null>(null);
@@ -826,7 +834,16 @@ export const PlayerPreview: React.FC = () => {
       onDragOver={handlePreviewDragOver}
       onDrop={handlePreviewDrop}
     >
-      <div ref={frameRef} className={`${styles.aspectFrame} ${frameClass}`}>
+      <div
+        ref={frameRef}
+        className={`${styles.aspectFrame} ${frameClass}`}
+        onClick={(e) => {
+          // Tap on video or background toggles play/pause
+          if (!draggingTextId && (e.target === frameRef.current || (e.target as HTMLElement).tagName === 'VIDEO')) {
+            togglePlay();
+          }
+        }}
+      >
         {/* Importing Floating Pill (Only when no playable stream/proxy URL exists yet) */}
         {mainAsset && !mainAsset.proxyUrl && !mainAsset.url && mainAsset.status === 'importing' && (
           <div className={styles.playerImportingOverlay}>
@@ -877,7 +894,6 @@ export const PlayerPreview: React.FC = () => {
                 className={styles.videoLayer}
                 playsInline
                 preload="metadata"
-                crossOrigin="anonymous"
                 poster={mainAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
                 muted={activeMainClip.isMuted}
                 onWaiting={handleWaiting}
@@ -939,7 +955,7 @@ export const PlayerPreview: React.FC = () => {
             )}
 
             {/* Google Drive Auth Required overlay if session expired or lost */}
-            {mainAsset && mainAsset.isDrive && (mainAsset.isAuthExpired || (!mainAsset.proxyUrl && !googleAccessToken)) && (
+            {mainAsset && mainAsset.isDrive && (mainAsset.isAuthExpired || (!mainAsset.proxyUrl && !hasAnyToken)) && (
               <div className={styles.driveAuthOverlay}>
                 <div className={styles.driveAuthIconCircle}>
                   <Cloud size={32} color="#06b6d4" />
@@ -1023,7 +1039,6 @@ export const PlayerPreview: React.FC = () => {
                 src={overlayAsset.proxyUrl || overlayAsset.url}
                 playsInline
                 preload="metadata"
-                crossOrigin="anonymous"
                 poster={overlayAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
                 muted={activeOverlayClip.isMuted}
                 onWaiting={handleWaiting}
