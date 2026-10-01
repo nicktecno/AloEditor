@@ -256,6 +256,67 @@
   border: 2px solid var(--accent-cyan);
 }
 
+.projectNavBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 6px 11px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--ease-fast);
+  height: 34px;
+}
+
+.projectNavBtn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.projectNavBtnPrimary {
+  border-color: rgba(129, 140, 248, 0.45);
+  background: rgba(129, 140, 248, 0.12);
+  color: #c7d2fe;
+}
+
+.projectNavBtnPrimary:hover {
+  background: rgba(129, 140, 248, 0.22);
+  border-color: #818cf8;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(129, 140, 248, 0.25);
+}
+
+.openBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--ease-fast);
+}
+
+.openBtn:hover {
+  background: var(--bg-hover);
+  border-color: #818cf8;
+  color: #c7d2fe;
+}
+
+.openBtnText {
+  display: inline;
+}
+
 .saveBtn {
   display: flex;
   align-items: center;
@@ -347,6 +408,14 @@
     padding: 6px 10px;
   }
 
+  .openBtnText {
+    display: none;
+  }
+
+  .openBtn {
+    padding: 8px 10px;
+  }
+
   .saveBtnText {
     display: none;
   }
@@ -428,6 +497,18 @@
     display: none !important;
   }
 
+  .projectNavBtn {
+    width: 30px;
+    height: 30px;
+    padding: 0 !important;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .projectNavBtn span {
+    display: none !important;
+  }
+
   .saveIndicator {
     display: none !important;
   }
@@ -480,6 +561,18 @@
     gap: 5px;
     flex-shrink: 0;
     margin-left: auto;
+  }
+
+  .openBtn {
+    width: 30px;
+    height: 30px;
+    padding: 0 !important;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .openBtnText {
+    display: none !important;
   }
 
   .driveButton {
@@ -552,9 +645,11 @@
   }
 
   .driveButton,
+  .openBtn,
   .saveBtn,
   .exportBtn,
-  .iconBtn {
+  .iconBtn,
+  .projectNavBtn {
     width: 28px;
     height: 28px;
   }

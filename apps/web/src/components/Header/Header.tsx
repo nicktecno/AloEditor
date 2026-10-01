@@ -82,7 +82,8 @@ export const Header: React.FC = () => {
         />
 
         <button
-          className={styles.iconBtn}
+          type="button"
+          className={styles.projectNavBtn}
           onClick={() => {
             if (confirm('Deseja iniciar um Novo Projeto vazio? O projeto atual será limpo para você começar do zero.')) {
               newProject();
@@ -91,16 +92,17 @@ export const Header: React.FC = () => {
           title="Iniciar Novo Projeto Vazio"
         >
           <FilePlus size={14} color="var(--accent-cyan)" />
-          <span className={styles.btnText}>Novo</span>
+          <span>Novo</span>
         </button>
 
         <button
-          className={styles.iconBtn}
+          type="button"
+          className={`${styles.projectNavBtn} ${styles.projectNavBtnPrimary}`}
           onClick={() => setIsProjectsModalOpen(true)}
-          title="Abrir / Gerenciar Projetos Salvos"
+          title="Abrir Projeto (Projetos salvos no navegador, Google Drive ou arquivo do computador)"
         >
           <FolderOpen size={14} color="#818cf8" />
-          <span className={styles.btnText}>Projetos</span>
+          <span>Abrir Projeto</span>
         </button>
 
         <div
@@ -231,6 +233,16 @@ export const Header: React.FC = () => {
               className={styles.avatar}
             />
           )}
+        </button>
+
+        <button
+          type="button"
+          className={styles.openBtn}
+          onClick={() => setIsProjectsModalOpen(true)}
+          title="Abrir Projeto (Projetos salvos no navegador, Google Drive ou arquivo do computador)"
+        >
+          <FolderOpen size={14} color="#818cf8" />
+          <span className={styles.openBtnText}>Abrir</span>
         </button>
 
         <button

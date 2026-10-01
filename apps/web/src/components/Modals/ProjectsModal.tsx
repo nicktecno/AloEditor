@@ -61,6 +61,7 @@ export const ProjectsModal: React.FC = () => {
       }
       const parsed = JSON.parse(raw);
       loadProject(parsed);
+      setIsProjectsModalOpen(false);
     } catch (e: any) {
       alert('Erro ao carregar projeto: ' + (e?.message || 'Arquivo corrompido'));
     }
@@ -71,6 +72,7 @@ export const ProjectsModal: React.FC = () => {
     if (!file) return;
     await importProjectFromJson(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    setIsProjectsModalOpen(false);
   };
 
   const formatDate = (isoStr: string) => {
@@ -91,6 +93,15 @@ export const ProjectsModal: React.FC = () => {
   return (
     <div className={styles.backdrop} onClick={() => setIsProjectsModalOpen(false)}>
       <div className={styles.modalWindow} onClick={(e) => e.stopPropagation()}>
+        {/* Hidden File Input for .alo.json / .json Import */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".alo.json,.json"
+          style={{ display: 'none' }}
+          onChange={handleFileInputChange}
+        />
+
         {/* Header */}
         <div className={styles.modalHeader}>
           <div className={styles.modalTitleGroup}>
@@ -136,21 +147,33 @@ export const ProjectsModal: React.FC = () => {
           {/* TAB 1: LOCAL PROJECTS */}
           {activeTab === 'local' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                   Projetos salvos automaticamente no armazenamento local deste navegador.
                 </span>
-                <button
-                  className={`${styles.actionBtn} ${styles.primaryActionBtn}`}
-                  onClick={() => {
-                    newProject();
-                    setIsProjectsModalOpen(false);
-                  }}
-                  title="Criar novo projeto vazio"
-                >
-                  <Plus size={14} />
-                  <span>Novo Projeto</span>
-                </button>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className={styles.actionBtn}
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Importar e abrir arquivo .alo.json ou .json do computador"
+                  >
+                    <FileUp size={14} color="var(--accent-cyan)" />
+                    <span>Abrir do PC (.alo.json)</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.primaryActionBtn}`}
+                    onClick={() => {
+                      newProject();
+                      setIsProjectsModalOpen(false);
+                    }}
+                    title="Criar novo projeto vazio"
+                  >
+                    <Plus size={14} />
+                    <span>Novo Projeto</span>
+                  </button>
+                </div>
               </div>
 
               {localProjects.length === 0 ? (
@@ -339,11 +362,14 @@ export const ProjectsModal: React.FC = () => {
                             <div className={styles.projectActions}>
                               <button
                                 className={`${styles.actionBtn} ${styles.primaryActionBtn}`}
-                                onClick={() => loadProjectFromDrive(file.id)}
+                                onClick={async () => {
+                                  await loadProjectFromDrive(file.id);
+                                  setIsProjectsModalOpen(false);
+                                }}
                                 title="Baixar e carregar este projeto no editor"
                               >
                                 <FileDown size={13} />
-                                <span>Carregar do Drive</span>
+                                <span>Abrir do Drive</span>
                               </button>
                             </div>
                           </div>
@@ -379,13 +405,6 @@ export const ProjectsModal: React.FC = () => {
                     Suporta arquivos exportados do AlôEditor (.alo.json ou .json)
                   </div>
                 </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".alo.json,.json"
-                  style={{ display: 'none' }}
-                  onChange={handleFileInputChange}
-                />
               </div>
 
               {/* Export current project */}

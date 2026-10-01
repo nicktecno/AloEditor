@@ -51,6 +51,7 @@ export const MediaPanel: React.FC = () => {
     updateAssetThumbnail,
     syncMediaDuration,
     setIsDrivePickerOpen,
+    setIsProjectsModalOpen,
     setIsRelinkModalOpen,
     offlineAssetsCount,
     openGooglePicker,
@@ -412,21 +413,33 @@ export const MediaPanel: React.FC = () => {
           <>
             <div className={styles.panelHeader}>
               <h3 className={styles.panelTitle}>Biblioteca de Mídia</h3>
-              <button
-                type="button"
-                className={`${styles.relinkFolderBtn} ${
-                  offlineAssetsCount > 0 ? styles.relinkFolderBtnAlert : ''
-                }`}
-                onClick={() => setIsRelinkModalOpen(true)}
-                title="Escanear pasta do computador para reconectar vídeos e áudios do projeto"
-              >
-                <FolderSearch size={13} />
-                <span>
-                  {offlineAssetsCount > 0
-                    ? `Reconectar (${offlineAssetsCount})`
-                    : 'Reconectar Pasta'}
-                </span>
-              </button>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className={styles.relinkFolderBtn}
+                  onClick={() => setIsProjectsModalOpen(true)}
+                  title="Abrir ou gerenciar projetos salvos"
+                  style={{ borderColor: 'rgba(129, 140, 248, 0.4)', color: '#c7d2fe' }}
+                >
+                  <FolderOpen size={13} color="#818cf8" />
+                  <span>Projetos</span>
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.relinkFolderBtn} ${
+                    offlineAssetsCount > 0 ? styles.relinkFolderBtnAlert : ''
+                  }`}
+                  onClick={() => setIsRelinkModalOpen(true)}
+                  title="Escanear pasta do computador para reconectar vídeos e áudios do projeto"
+                >
+                  <FolderSearch size={13} />
+                  <span>
+                    {offlineAssetsCount > 0
+                      ? `Reconectar (${offlineAssetsCount})`
+                      : 'Reconectar'}
+                  </span>
+                </button>
+              </div>
             </div>
 
             {/* Google Drive Stream Direct Card */}
