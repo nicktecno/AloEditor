@@ -159,17 +159,27 @@ interface EditorContextType {
 
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
 
-// Utilitário centralizado para montar URLs de streaming do Google Drive seguras (sem token=null)
+export const CLOUDFLARE_WORKER_DEFAULT_URL = 'https://aloeditor-drive-proxy.aloeditor-drive-proxy.workers.dev';
+
+// Utilitário centralizado para montar URLs de streaming do Google Drive via Cloudflare Worker gratuito (Zero Egress)
 export function getDriveStreamUrl(fileId: string, token?: string | null): string {
   const activeToken =
     (token && token !== 'null' && token !== 'undefined' && token.length > 10 ? token : null) ||
     (typeof window !== 'undefined'
       ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
       : null);
-  if (activeToken && activeToken !== 'null' && activeToken !== 'undefined' && activeToken.length > 10) {
-    return `/api/drive/stream?fileId=${fileId}&token=${encodeURIComponent(activeToken)}`;
-  }
-  return `/api/drive/stream?fileId=${fileId}`;
+
+  const workerBase =
+    process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_URL ||
+    (typeof window !== 'undefined' ? localStorage.getItem('alo_cloudflare_worker_url') : '') ||
+    CLOUDFLARE_WORKER_DEFAULT_URL;
+
+  const baseUrl = (workerBase || CLOUDFLARE_WORKER_DEFAULT_URL).replace(/\/$/, '');
+  const query = activeToken
+    ? `fileId=${fileId}&token=${encodeURIComponent(activeToken)}`
+    : `fileId=${fileId}`;
+
+  return `${baseUrl}?${query}`;
 }
 
 export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -1304,7 +1314,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             clientId: googleClientId,
             accessToken: token,
             onPicked: (file: GoogleDriveFile) => {
-              const streamUrl = `/api/drive/stream?fileId=${file.id}&token=${token}`;
+              const streamUrl = getDriveStreamUrl(file.id, token);
               const isAudio = file.mimeType.startsWith('audio');
               const newAsset: MediaAsset = {
                 id: `asset_drive_${file.id}`,
@@ -1338,7 +1348,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       clientId: googleClientId,
       accessToken: googleAccessToken,
       onPicked: (file: GoogleDriveFile) => {
-        const streamUrl = `/api/drive/stream?fileId=${file.id}&token=${googleAccessToken}`;
+        const streamUrl = getDriveStreamUrl(file.id, googleAccessToken);
         const isAudio = file.mimeType.startsWith('audio');
         const newAsset: MediaAsset = {
           id: `asset_drive_${file.id}`,

@@ -2,6 +2,7 @@ import { Project, TimelineClip, MediaAsset } from '@/types/editor';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 import { getClipTransitionState } from '@/utils/transitionUtils';
 import { processFrameBackgroundRemoval } from '@/utils/backgroundRemoval';
+import { getDriveStreamUrl } from '@/context/EditorContext';
 
 let exportBgOffscreenCanvas: HTMLCanvasElement | null = null;
 
@@ -433,7 +434,7 @@ export async function renderProjectClientSide({
               id: aId,
               name: file.name,
               type: file.mimeType?.startsWith('audio') ? 'audio' : 'video',
-              url: `/api/drive/stream?fileId=${file.id}&token=${token || ''}`,
+              url: getDriveStreamUrl(file.id, token || ''),
               driveFileId: file.id,
               duration: file.durationSeconds || 15.0,
               isDrive: true,

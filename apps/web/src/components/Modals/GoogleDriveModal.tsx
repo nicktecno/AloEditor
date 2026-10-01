@@ -46,12 +46,17 @@ export const GoogleDriveModal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'connect' | 'credentials' | 'help'>('connect');
   const [clientIdInput, setClientIdInput] = useState(googleClientId || '');
   const [apiKeyInput, setApiKeyInput] = useState(googleApiKey || '');
+  const [workerUrlInput, setWorkerUrlInput] = useState('');
   const [copiedOrigin, setCopiedOrigin] = useState(false);
   const [importingFileId, setImportingFileId] = useState<string | null>(null);
 
   useEffect(() => {
     setClientIdInput(googleClientId || '');
     setApiKeyInput(googleApiKey || '');
+    if (typeof window !== 'undefined') {
+      const savedWorker = localStorage.getItem('alo_cloudflare_worker_url') || process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_URL || '';
+      setWorkerUrlInput(savedWorker);
+    }
   }, [googleClientId, googleApiKey]);
 
   // Only load if not already cached
@@ -83,7 +88,16 @@ export const GoogleDriveModal: React.FC = () => {
       clientId: clientIdInput.trim(),
       apiKey: apiKeyInput.trim(),
     });
-    alert('Credenciais salvas com sucesso!');
+
+    if (typeof window !== 'undefined') {
+      if (workerUrlInput.trim()) {
+        localStorage.setItem('alo_cloudflare_worker_url', workerUrlInput.trim());
+      } else {
+        localStorage.removeItem('alo_cloudflare_worker_url');
+      }
+    }
+
+    alert('Configurações salvas com sucesso!');
     setActiveTab('connect');
   };
 
@@ -361,6 +375,23 @@ export const GoogleDriveModal: React.FC = () => {
                   onChange={(e) => setApiKeyInput(e.target.value)}
                   className={styles.selectInput}
                 />
+              </div>
+
+              <div className={styles.formRow}>
+                <label className={styles.formLabel} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Cloudflare Worker URL (Proxy de Vídeo Gratuito)</span>
+                  <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 600 }}>0 Custos / Tráfego Ilimitado</span>
+                </label>
+                <input
+                  type="url"
+                  placeholder="ex: https://aloeditor-drive-proxy.seunome.workers.dev"
+                  value={workerUrlInput}
+                  onChange={(e) => setWorkerUrlInput(e.target.value)}
+                  className={styles.selectInput}
+                />
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Usado para fazer streaming e download dos vídeos do Google Drive sem consumir a cota da Vercel.
+                </span>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-input)', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-default)' }}>

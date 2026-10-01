@@ -1,0 +1,6 @@
+name = "aloeditor-drive-proxy"
+main = "src/index.js"
+compatibility_date = "2024-09-01"
+
+[observability]
+enabled = true

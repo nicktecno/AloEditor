@@ -417,53 +417,27 @@ export const MediaPanel: React.FC = () => {
               </div>
             </div>
 
-            {/* Google Drive Stream Direct Card */}
-            <div className={styles.driveBanner}>
-              <div className={styles.driveBannerHeader}>
-                <Cloud size={16} />
-                <span>Google Drive Cloud Stream</span>
-              </div>
-              <p className={styles.driveBannerText}>
-                Importe e assista aos seus vídeos em tempo real direto da nuvem via Range Requests, sem baixar para o HD.
-              </p>
-              <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                <button
-                  className={styles.pickerTriggerBtn}
-                  style={{ flex: 1 }}
-                  onClick={() => setIsDrivePickerOpen(true)}
-                >
-                  <FolderOpen size={14} />
-                  <span>Navegar no Drive</span>
-                </button>
-                <button
-                  className={styles.pickerTriggerBtn}
-                  style={{ flex: 1, borderColor: isUrlInputOpen ? 'var(--accent-cyan)' : undefined }}
-                  onClick={() => setIsUrlInputOpen((prev) => !prev)}
-                >
-                  <span>🔗 Colar Link</span>
-                </button>
-              </div>
 
-              {isUrlInputOpen && (
-                <div className={styles.driveUrlInputRow}>
-                  <input
-                    type="text"
-                    className={styles.driveUrlInput}
-                    placeholder="Cole o link do Google Drive aqui..."
-                    value={driveUrlInput}
-                    onChange={(e) => setDriveUrlInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleImportDriveUrl();
-                    }}
-                  />
-                  <button
-                    className={styles.driveUrlConfirmBtn}
-                    onClick={handleImportDriveUrl}
-                  >
-                    Importar
-                  </button>
-                </div>
-              )}
+            {/* Quick Import Actions */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              <button
+                type="button"
+                className={styles.pickerTriggerBtn}
+                style={{ flex: 1 }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload size={14} color="var(--accent-cyan)" />
+                <span>Upload Local</span>
+              </button>
+              <button
+                type="button"
+                className={styles.pickerTriggerBtn}
+                style={{ flex: 1 }}
+                onClick={() => setIsDrivePickerOpen(true)}
+              >
+                <Cloud size={14} color="#60a5fa" />
+                <span>Google Drive</span>
+              </button>
             </div>
 
             {/* Upload Zone */}
