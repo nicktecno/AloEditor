@@ -95,6 +95,7 @@ interface EditorContextType {
   setGoogleCredentials: (creds: { clientId: string; apiKey: string }) => void;
   loginWithGoogle: () => void;
   logoutGoogle: () => void;
+  refreshGoogleToken: (interactive?: boolean) => Promise<string | null>;
   openGooglePicker: () => void;
 
   // Actions
@@ -233,6 +234,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isSavingToDrive, setIsSavingToDrive] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
+
+  const googleClientIdRef = useRef(googleClientId);
+  googleClientIdRef.current = googleClientId;
+  const driveUserRef = useRef(driveUser);
+  driveUserRef.current = driveUser;
+  const isRefreshingTokenRef = useRef(false);
 
   // Projects Management state
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
@@ -589,7 +596,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Centralized cached Drive video loader
   const loadDriveVideos = useCallback(async (forceRefresh = false): Promise<GoogleDriveFile[]> => {
-    const token = sessionStorage.getItem('alo_google_access_token') || googleAccessToken;
+    const token =
+      sessionStorage.getItem('alo_google_access_token') ||
+      localStorage.getItem('alo_google_access_token') ||
+      googleAccessToken;
     if (!token) return [];
 
     // Return immediately if already cached and not forcing refresh
@@ -647,7 +657,71 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, []);
 
-  // Load saved credentials from localStorage & load scripts on mount
+  const OAUTH_SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas de sessão contínua
+
+  // Renovação de token de acesso Google (suporta modo silencioso em segundo plano)
+  const refreshGoogleToken = useCallback(
+    (interactive = false): Promise<string | null> => {
+      const clientId = googleClientIdRef.current || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+      if (!clientId) return Promise.resolve(null);
+      if (isRefreshingTokenRef.current) return Promise.resolve(null);
+
+      isRefreshingTokenRef.current = true;
+      const userEmail = driveUserRef.current?.email || undefined;
+
+      return new Promise((resolve) => {
+        requestGoogleAccessToken(
+          clientId,
+          async (newToken: string, expiresIn?: number) => {
+            isRefreshingTokenRef.current = false;
+            const ttl = expiresIn ? expiresIn * 1000 : 3600 * 1000;
+            const tokenExpiresAt = Date.now() + ttl;
+            const sessionExpiresAt = Date.now() + OAUTH_SESSION_TTL_MS; // Estende os 24h a cada renovação
+
+            setGoogleAccessToken(newToken);
+            setIsDriveConnected(true);
+
+            try {
+              localStorage.setItem('alo_google_access_token', newToken);
+              sessionStorage.setItem('alo_google_access_token', newToken);
+              localStorage.setItem('alo_google_token_expires_at', String(tokenExpiresAt));
+              localStorage.setItem('alo_session_expires_at', String(sessionExpiresAt));
+            } catch {}
+
+            updateDriveAssetsToken(newToken);
+
+            // Se o perfil ainda não estiver carregado, busca e persiste
+            if (!driveUserRef.current) {
+              const profile = await fetchGoogleProfile(newToken);
+              if (profile) {
+                setDriveUser(profile);
+                try {
+                  localStorage.setItem('alo_session_user', JSON.stringify(profile));
+                } catch {}
+              }
+            }
+
+            resolve(newToken);
+          },
+          (err: any) => {
+            isRefreshingTokenRef.current = false;
+            console.warn('Tentativa de renovação do token Google:', err?.message || err);
+            if (interactive) {
+              alert('Não foi possível renovar a conexão com o Google Drive. Por favor, conecte novamente.');
+            }
+            resolve(null);
+          },
+          {
+            prompt: interactive ? 'select_account' : '',
+            hint: userEmail,
+          }
+        );
+      });
+    },
+    [updateDriveAssetsToken]
+  );
+
+  // Carrega credenciais e restaura sessão de 24h no mount
   useEffect(() => {
     loadGoogleScripts().catch(() => {});
 
@@ -660,42 +734,97 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (savedClientId) setGoogleClientId(savedClientId);
     if (savedApiKey && !savedApiKey.startsWith('GOCSPX')) setGoogleApiKey(savedApiKey);
 
-    const savedToken =
-      typeof window !== 'undefined'
-        ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
-        : null;
+    if (typeof window === 'undefined') return;
 
-    if (savedToken) {
-      fetchGoogleProfile(savedToken)
-        .then((profile) => {
+    const sessionExpiresAt = Number(localStorage.getItem('alo_session_expires_at') || 0);
+    const tokenExpiresAt = Number(localStorage.getItem('alo_google_token_expires_at') || 0);
+    const savedUserRaw = localStorage.getItem('alo_session_user');
+    const savedToken =
+      localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token');
+
+    const isSessionActive = sessionExpiresAt > Date.now();
+
+    if (isSessionActive) {
+      // 1. Restaura o perfil e estado de conexão imediatamente do cache de 24h
+      if (savedUserRaw) {
+        try {
+          const user = JSON.parse(savedUserRaw);
+          setDriveUser(user);
+          setIsDriveConnected(true);
+        } catch {}
+      } else {
+        setIsDriveConnected(true);
+      }
+
+      // 2. Se o token ainda for válido por pelo menos mais 1 minuto:
+      if (savedToken && tokenExpiresAt > Date.now() + 60 * 1000) {
+        setGoogleAccessToken(savedToken);
+        updateDriveAssetsToken(savedToken);
+        loadDriveVideos(false).catch(() => {});
+
+        // Opcional: valida silenciosamente em segundo plano
+        fetchGoogleProfile(savedToken).then((profile) => {
           if (profile) {
-            setGoogleAccessToken(savedToken);
             setDriveUser(profile);
-            setIsDriveConnected(true);
-            updateDriveAssetsToken(savedToken);
-            loadDriveVideos(false).catch(() => {});
-          } else {
-            // Token expirado: limpa credenciais da sessão e storage
             try {
-              localStorage.removeItem('alo_google_access_token');
-              sessionStorage.removeItem('alo_google_access_token');
+              localStorage.setItem('alo_session_user', JSON.stringify(profile));
             } catch {}
-            setGoogleAccessToken(null);
-            setDriveUser(null);
-            setIsDriveConnected(false);
+          } else {
+            // Se o Google invalidou antes do tempo, renova silenciosamente
+            refreshGoogleToken(false).catch(() => {});
           }
-        })
-        .catch(() => {
-          try {
-            localStorage.removeItem('alo_google_access_token');
-            sessionStorage.removeItem('alo_google_access_token');
-          } catch {}
-          setGoogleAccessToken(null);
-          setDriveUser(null);
-          setIsDriveConnected(false);
-        });
+        }).catch(() => {});
+      } else {
+        // Token expirado mas dentro da janela de 24h: renova silenciosamente em segundo plano
+        refreshGoogleToken(false).catch(() => {});
+      }
+    } else if (sessionExpiresAt > 0) {
+      // Sessão de 24h expirada: limpa dados antigos
+      try {
+        localStorage.removeItem('alo_google_access_token');
+        localStorage.removeItem('alo_google_token_expires_at');
+        localStorage.removeItem('alo_session_expires_at');
+        localStorage.removeItem('alo_session_user');
+        sessionStorage.removeItem('alo_google_access_token');
+      } catch {}
+      setGoogleAccessToken(null);
+      setDriveUser(null);
+      setIsDriveConnected(false);
     }
-  }, [loadDriveVideos, updateDriveAssetsToken]);
+  }, [loadDriveVideos, updateDriveAssetsToken, refreshGoogleToken]);
+
+  // Mantém a sessão ativa por 24h com renovação proativa antes da expiração
+  useEffect(() => {
+    const checkAndAutoRenew = () => {
+      if (typeof window === 'undefined') return;
+      const sessionExpiresAt = Number(localStorage.getItem('alo_session_expires_at') || 0);
+      if (!sessionExpiresAt || Date.now() >= sessionExpiresAt) return;
+
+      const tokenExpiresAt = Number(localStorage.getItem('alo_google_token_expires_at') || 0);
+      // Se faltam menos de 10 minutos para expirar o access token:
+      if (Date.now() >= tokenExpiresAt - 10 * 60 * 1000) {
+        refreshGoogleToken(false).catch(() => {});
+      }
+    };
+
+    // Checa a cada 3 minutos
+    const interval = setInterval(checkAndAutoRenew, 3 * 60 * 1000);
+
+    // Também renova quando o usuário volta para a aba
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkAndAutoRenew();
+      }
+    };
+    window.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', checkAndAutoRenew);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', checkAndAutoRenew);
+    };
+  }, [refreshGoogleToken]);
 
   const setGoogleCredentials = useCallback(({ clientId, apiKey }: { clientId: string; apiKey: string }) => {
     setGoogleClientId(clientId);
@@ -713,24 +842,36 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     requestGoogleAccessToken(
       googleClientId,
-      async (token: string) => {
+      async (token: string, expiresIn?: number) => {
+        const ttl = expiresIn ? expiresIn * 1000 : 3600 * 1000;
+        const tokenExpiresAt = Date.now() + ttl;
+        const sessionExpiresAt = Date.now() + OAUTH_SESSION_TTL_MS; // 24 HORAS
+
         setGoogleAccessToken(token);
+        setIsDriveConnected(true);
+
         try {
           localStorage.setItem('alo_google_access_token', token);
           sessionStorage.setItem('alo_google_access_token', token);
+          localStorage.setItem('alo_google_token_expires_at', String(tokenExpiresAt));
+          localStorage.setItem('alo_session_expires_at', String(sessionExpiresAt));
         } catch {}
-        setIsDriveConnected(true);
+
         updateDriveAssetsToken(token);
         const profile = await fetchGoogleProfile(token);
         if (profile) {
           setDriveUser(profile);
+          try {
+            localStorage.setItem('alo_session_user', JSON.stringify(profile));
+          } catch {}
         }
         loadDriveVideos(false).catch(() => {});
       },
       (err: any) => {
         console.error('Erro na autenticação do Google:', err);
-        alert(`Erro na autenticação do Google: ${err.message || 'Verifique se o Client ID está correto e autoriza http://localhost:3001'}`);
-      }
+        alert(`Erro na autenticação do Google: ${err.message || 'Verifique se o Client ID está correto e autoriza a origem atual'}`);
+      },
+      { prompt: 'select_account' }
     );
   }, [googleClientId, loadDriveVideos, updateDriveAssetsToken]);
 
@@ -742,6 +883,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setDriveVideos([]);
     try {
       localStorage.removeItem('alo_google_access_token');
+      localStorage.removeItem('alo_google_token_expires_at');
+      localStorage.removeItem('alo_session_expires_at');
+      localStorage.removeItem('alo_session_user');
       sessionStorage.removeItem('alo_google_access_token');
       sessionStorage.removeItem('alo_drive_videos_cache');
     } catch {}
@@ -2302,6 +2446,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setGoogleCredentials,
         loginWithGoogle,
         logoutGoogle,
+        refreshGoogleToken,
         openGooglePicker,
 
         setCurrentTime,

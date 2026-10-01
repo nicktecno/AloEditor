@@ -222,7 +222,7 @@ export const Header: React.FC = () => {
         <button
           className={styles.driveButton}
           onClick={() => setIsDrivePickerOpen(true)}
-          title={isDriveConnected ? `Conectado como ${driveUser?.name || 'Google'}. Clique para gerenciar ou escolher vídeos.` : 'Conectar com Google Drive'}
+          title={isDriveConnected ? `Conectado como ${driveUser?.name || 'Google'} (Sessão de 24h ativa com renovação automática). Clique para gerenciar ou escolher vídeos.` : 'Conectar com Google Drive'}
         >
           <Cloud size={15} color={isDriveConnected ? '#10b981' : '#06b6d4'} />
           <span className={styles.driveBtnText}>{isDriveConnected ? (driveUser?.name?.split(' ')[0] || 'Drive') : 'Drive'}</span>

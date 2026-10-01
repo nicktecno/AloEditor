@@ -184,7 +184,9 @@ export const GoogleDriveModal: React.FC = () => {
                       )}
                       <div>
                         <div style={{ fontSize: '13px', fontWeight: 600 }}>{driveUser.name}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--accent-cyan)' }}>{driveUser.email} (Conectado)</div>
+                        <div style={{ fontSize: '11px', color: 'var(--accent-cyan)' }}>
+                          {driveUser.email} • Sessão de 24h ativa
+                        </div>
                       </div>
                     </div>
 

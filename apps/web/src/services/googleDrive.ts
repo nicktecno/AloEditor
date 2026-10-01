@@ -68,13 +68,20 @@ export async function loadGoogleScripts(): Promise<{ gapiLoaded: boolean; gisLoa
   return { gapiLoaded, gisLoaded };
 }
 
+export interface GoogleTokenRequestOptions {
+  prompt?: string;
+  hint?: string;
+}
+
 /**
- * Solicita autenticação OAuth 2.0 via popup do Google Identity Services
+ * Solicita autenticação OAuth 2.0 via Google Identity Services.
+ * Suporta refresh silencioso (prompt: '') e seleção de conta (prompt: 'select_account').
  */
 export function requestGoogleAccessToken(
   clientId: string,
-  onSuccess: (token: string) => void,
-  onError?: (err: any) => void
+  onSuccess: (token: string, expiresIn?: number) => void,
+  onError?: (err: any) => void,
+  options?: GoogleTokenRequestOptions
 ): void {
   if (!window.google?.accounts?.oauth2) {
     onError?.(new Error('Google Identity Services ainda não carregado'));
@@ -88,13 +95,24 @@ export function requestGoogleAccessToken(
       if (response.error) {
         onError?.(response);
       } else if (response.access_token) {
-        onSuccess(response.access_token);
+        const expiresIn = response.expires_in ? Number(response.expires_in) : 3599;
+        onSuccess(response.access_token, expiresIn);
       }
     },
   });
 
-  // Abre o popup oficial do Google
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+  const reqConfig: any = {};
+  if (options?.prompt !== undefined) {
+    reqConfig.prompt = options.prompt;
+  } else {
+    reqConfig.prompt = 'select_account';
+  }
+  if (options?.hint) {
+    reqConfig.hint = options.hint;
+  }
+
+  // Executa requisição de token
+  tokenClient.requestAccessToken(reqConfig);
 }
 
 /**
