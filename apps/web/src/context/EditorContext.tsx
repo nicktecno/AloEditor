@@ -153,6 +153,19 @@ interface EditorContextType {
 
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
 
+// Utilitário centralizado para montar URLs de streaming do Google Drive seguras (sem token=null)
+export function getDriveStreamUrl(fileId: string, token?: string | null): string {
+  const activeToken =
+    (token && token !== 'null' && token !== 'undefined' && token.length > 10 ? token : null) ||
+    (typeof window !== 'undefined'
+      ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
+      : null);
+  if (activeToken && activeToken !== 'null' && activeToken !== 'undefined' && activeToken.length > 10) {
+    return `/api/drive/stream?fileId=${fileId}&token=${encodeURIComponent(activeToken)}`;
+  }
+  return `/api/drive/stream?fileId=${fileId}`;
+}
+
 export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [project, setProject] = useState<Project>(INITIAL_PROJECT);
   const [history, setHistory] = useState<Project[]>([INITIAL_PROJECT]);
@@ -623,6 +636,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [googleAccessToken]);
 
+
+
   // Atualiza URLs de streaming de mídias do Drive para o novo token e reativa reprodução
   const updateDriveAssetsToken = useCallback((newToken: string | null) => {
     setProject((prev) => {
@@ -631,14 +646,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const updated = prev.assets.map((a) => {
         if (!a.isDrive || !a.driveFileId) return a;
-        const newUrl = newToken
-          ? `/api/drive/stream?fileId=${a.driveFileId}&token=${newToken}`
-          : `/api/drive/stream?fileId=${a.driveFileId}`;
+        const newUrl = getDriveStreamUrl(a.driveFileId, newToken);
         return {
           ...a,
           url: newUrl,
-          isAuthExpired: newToken ? false : a.isAuthExpired,
-          isOffline: newToken ? false : a.isOffline,
+          isAuthExpired: false, // Sempre reativa mídias do Drive
+          isOffline: false,
         };
       });
 
@@ -736,50 +749,57 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (typeof window === 'undefined') return;
 
-    const sessionExpiresAt = Number(localStorage.getItem('alo_session_expires_at') || 0);
-    const tokenExpiresAt = Number(localStorage.getItem('alo_google_token_expires_at') || 0);
-    const savedUserRaw = localStorage.getItem('alo_session_user');
     const savedToken =
       localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token');
+    const sessionExpiresAt = Number(localStorage.getItem('alo_session_expires_at') || 0);
+    const savedUserRaw = localStorage.getItem('alo_session_user');
 
-    const isSessionActive = sessionExpiresAt > Date.now();
+    if (savedToken && savedToken !== 'null' && savedToken !== 'undefined' && savedToken.length > 10) {
+      // 1. Há um token salvo no navegador: ativa imediatamente e protege a sessão de 24h
+      setGoogleAccessToken(savedToken);
+      setIsDriveConnected(true);
+      updateDriveAssetsToken(savedToken);
 
-    if (isSessionActive) {
-      // 1. Restaura o perfil e estado de conexão imediatamente do cache de 24h
+      // Garante que a sessão 24h esteja gravada
+      if (!sessionExpiresAt || sessionExpiresAt <= Date.now()) {
+        localStorage.setItem('alo_session_expires_at', String(Date.now() + OAUTH_SESSION_TTL_MS));
+      }
+
       if (savedUserRaw) {
         try {
           const user = JSON.parse(savedUserRaw);
           setDriveUser(user);
-          setIsDriveConnected(true);
         } catch {}
-      } else {
-        setIsDriveConnected(true);
       }
 
-      // 2. Se o token ainda for válido por pelo menos mais 1 minuto:
-      if (savedToken && tokenExpiresAt > Date.now() + 60 * 1000) {
-        setGoogleAccessToken(savedToken);
-        updateDriveAssetsToken(savedToken);
-        loadDriveVideos(false).catch(() => {});
+      loadDriveVideos(false).catch(() => {});
 
-        // Opcional: valida silenciosamente em segundo plano
-        fetchGoogleProfile(savedToken).then((profile) => {
+      // Valida silenciosamente em segundo plano
+      fetchGoogleProfile(savedToken)
+        .then((profile) => {
           if (profile) {
             setDriveUser(profile);
             try {
               localStorage.setItem('alo_session_user', JSON.stringify(profile));
             } catch {}
           } else {
-            // Se o Google invalidou antes do tempo, renova silenciosamente
+            // Se o token expirou no Google, renova silenciosamente sem desconectar
             refreshGoogleToken(false).catch(() => {});
           }
-        }).catch(() => {});
-      } else {
-        // Token expirado mas dentro da janela de 24h: renova silenciosamente em segundo plano
-        refreshGoogleToken(false).catch(() => {});
-      }
-    } else if (sessionExpiresAt > 0) {
-      // Sessão de 24h expirada: limpa dados antigos
+        })
+        .catch(() => {
+          refreshGoogleToken(false).catch(() => {});
+        });
+    } else if (sessionExpiresAt > Date.now() && savedUserRaw) {
+      // Sessão de 24h ativa mas sem token salvo: restaura usuário e busca token silenciosamente
+      try {
+        const user = JSON.parse(savedUserRaw);
+        setDriveUser(user);
+        setIsDriveConnected(true);
+      } catch {}
+      refreshGoogleToken(false).catch(() => {});
+    } else if (sessionExpiresAt > 0 && sessionExpiresAt <= Date.now()) {
+      // Somente se passou das 24h: limpa
       try {
         localStorage.removeItem('alo_google_access_token');
         localStorage.removeItem('alo_google_token_expires_at');
@@ -1782,6 +1802,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const assetWithThumb: MediaAsset = {
         ...asset,
         isOffline: false,
+        isAuthExpired: false,
         thumbnailUrl: asset.thumbnailUrl || (isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined),
         status: isImporting ? 'importing' : (asset.status || 'ready'),
         preloadProgress: asset.proxyUrl ? 100 : (asset.preloadProgress ?? (isImporting ? 5 : 100)),
@@ -1795,6 +1816,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 ? {
                     ...a,
                     isOffline: false,
+                    isAuthExpired: false,
                     url: assetWithThumb.url,
                     status: assetWithThumb.status,
                     preloadProgress: assetWithThumb.preloadProgress,

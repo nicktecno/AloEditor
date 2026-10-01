@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useEditor } from '@/context/EditorContext';
+import { useEditor, getDriveStreamUrl } from '@/context/EditorContext';
 import { listDriveVideos, GoogleDriveFile } from '@/services/googleDrive';
 import { MediaAsset } from '@/types/editor';
 import {
@@ -62,7 +62,7 @@ export const GoogleDriveModal: React.FC = () => {
   if (!isDrivePickerOpen) return null;
 
   const handleSelectVideo = (file: GoogleDriveFile) => {
-    const streamUrl = `/api/drive/stream?fileId=${file.id}&token=${googleAccessToken}`;
+    const streamUrl = getDriveStreamUrl(file.id, googleAccessToken);
     const newAsset: MediaAsset = {
       id: `asset_drive_${file.id}`,
       name: file.name,

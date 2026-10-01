@@ -143,6 +143,7 @@ export const PlayerPreview: React.FC = () => {
     markAssetAuthExpired,
     googleAccessToken,
     loginWithGoogle,
+    refreshGoogleToken,
     setIsDrivePickerOpen,
     previewQuality,
   } = useEditor();
@@ -882,13 +883,21 @@ export const PlayerPreview: React.FC = () => {
                 onCanPlay={handleCanPlay}
                 onPlaying={handleCanPlay}
                 onSeeked={handleCanPlay}
-                onError={(e) => {
+                onError={async (e) => {
                   handleCanPlay();
                   const target = e.currentTarget;
                   if (mainAsset) {
-                    if (mainAsset.isDrive) {
-                      if (!mainAsset.proxyUrl) {
-                        markAssetAuthExpired(mainAsset.id, true);
+                    if (mainAsset.isDrive && !mainAsset.proxyUrl) {
+                      try {
+                        const check = await fetch(mainAsset.url, { method: 'HEAD' });
+                        if (check.status === 401 || check.status === 403) {
+                          const refreshed = await refreshGoogleToken(false);
+                          if (!refreshed) {
+                            markAssetAuthExpired(mainAsset.id, true);
+                          }
+                        }
+                      } catch {
+                        // ignore transient network errors
                       }
                     } else if (target.error?.code === 4) {
                       fetch(mainAsset.url).catch(() => {
@@ -1018,13 +1027,21 @@ export const PlayerPreview: React.FC = () => {
                 onWaiting={handleWaiting}
                 onCanPlay={handleCanPlay}
                 onPlaying={handleCanPlay}
-                onError={(e) => {
+                onError={async (e) => {
                   handleCanPlay();
                   const target = e.currentTarget;
                   if (overlayAsset) {
-                    if (overlayAsset.isDrive) {
-                      if (!overlayAsset.proxyUrl) {
-                        markAssetAuthExpired(overlayAsset.id, true);
+                    if (overlayAsset.isDrive && !overlayAsset.proxyUrl) {
+                      try {
+                        const check = await fetch(overlayAsset.url, { method: 'HEAD' });
+                        if (check.status === 401 || check.status === 403) {
+                          const refreshed = await refreshGoogleToken(false);
+                          if (!refreshed) {
+                            markAssetAuthExpired(overlayAsset.id, true);
+                          }
+                        }
+                      } catch {
+                        // ignore transient network errors
                       }
                     } else if (target.error?.code === 4) {
                       fetch(overlayAsset.url).catch(() => {

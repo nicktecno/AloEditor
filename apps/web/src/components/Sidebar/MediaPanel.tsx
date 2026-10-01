@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { useEditor } from '@/context/EditorContext';
+import { useEditor, getDriveStreamUrl } from '@/context/EditorContext';
 import { SidebarTab, MediaAsset } from '@/types/editor';
 import { GoogleDriveFile } from '@/services/googleDrive';
 import {
@@ -93,7 +93,7 @@ export const MediaPanel: React.FC = () => {
       id: `asset_drive_${fileId}_${Date.now()}`,
       name: `Drive_Video_${fileId.substring(0, 6)}.mp4`,
       type: 'video',
-      url: `/api/drive/stream?fileId=${fileId}&token=${savedToken}`,
+      url: getDriveStreamUrl(fileId, savedToken),
       driveFileId: fileId,
       duration: 15.0,
       isDrive: true,
@@ -306,7 +306,7 @@ export const MediaPanel: React.FC = () => {
         ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
         : '') ||
       '';
-    const streamUrl = `/api/drive/stream?fileId=${file.id}&token=${savedToken}`;
+    const streamUrl = getDriveStreamUrl(file.id, savedToken);
     const newAsset: MediaAsset = {
       id: `asset_drive_${file.id}`,
       name: file.name,
@@ -593,7 +593,7 @@ export const MediaPanel: React.FC = () => {
                       id: `asset_drive_${dv.id}`,
                       name: dv.name,
                       type: dv.mimeType.startsWith('audio') ? 'audio' : 'video',
-                      url: `/api/drive/stream?fileId=${dv.id}&token=${googleAccessToken}`,
+                      url: getDriveStreamUrl(dv.id, googleAccessToken),
                       driveFileId: dv.id,
                       duration: dv.durationSeconds || 15.0,
                       isDrive: true,
