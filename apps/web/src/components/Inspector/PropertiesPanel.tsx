@@ -21,7 +21,9 @@ import {
   Scissors,
   VolumeX,
   X,
+  RotateCcw,
 } from 'lucide-react';
+import { volumeToDb, formatVolumeText, generateProceduralPeaks } from '@/utils/waveformGenerator';
 import styles from './Inspector.module.css';
 
 export const PropertiesPanel: React.FC = () => {
@@ -209,6 +211,66 @@ export const PropertiesPanel: React.FC = () => {
         {/* Video Transform Tab */}
         {isVideo && inspectorTab === 'video' && (
           <>
+            {/* Quick Media Audio Section */}
+            <div
+              className={styles.sectionGroup}
+              style={{
+                border: '1px solid rgba(52, 211, 153, 0.35)',
+                background: 'rgba(52, 211, 153, 0.05)',
+                borderRadius: '8px',
+                padding: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Volume2 size={16} color="#34d399" />
+                  <span className={styles.sectionTitle} style={{ color: '#34d399', margin: 0, fontWeight: 700 }}>
+                    Áudio da Mídia
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  style={{
+                    fontSize: '11px',
+                    color: '#38bdf8',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    padding: '2px 4px',
+                  }}
+                  onClick={() => setInspectorTab('audio')}
+                >
+                  Painel de Áudio →
+                </button>
+              </div>
+
+              <div className={styles.propRow}>
+                <span className={styles.propLabel}>Volume</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1.5"
+                  step="0.05"
+                  value={selectedClip.volume}
+                  className={styles.propSlider}
+                  onChange={(e) => updateClip(selectedClip.id, { volume: parseFloat(e.target.value) })}
+                />
+                <span className={styles.propValue}>
+                  {Math.round(selectedClip.volume * 100)}% ({volumeToDb(selectedClip.volume) > 0 ? `+` : ''}{volumeToDb(selectedClip.volume).toFixed(1)} dB)
+                </span>
+              </div>
+
+              <div className={styles.propRow}>
+                <span className={styles.propLabel}>Silenciar Vídeo</span>
+                <input
+                  type="checkbox"
+                  checked={selectedClip.isMuted || false}
+                  onChange={(e) => updateClip(selectedClip.id, { isMuted: e.target.checked })}
+                />
+              </div>
+            </div>
+
             <div className={styles.sectionGroup}>
               <span className={styles.sectionTitle}>Transformar & Escala</span>
 
@@ -1152,8 +1214,30 @@ export const PropertiesPanel: React.FC = () => {
 
             {/* Volume Control */}
             <div className={styles.sectionGroup}>
-              <span className={styles.sectionTitle}>Controle de Volume</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span className={styles.sectionTitle} style={{ margin: 0 }}>Controle de Volume</span>
+                <button
+                  type="button"
+                  className={styles.resetBtn}
+                  onClick={() => updateClip(selectedClip.id, { volume: 1.0, isMuted: false })}
+                  title="Restaurar Volume para 100% (0.0 dB)"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <RotateCcw size={12} />
+                  <span>100% (0 dB)</span>
+                </button>
+              </div>
 
+              {/* Volume Slider with dB readout */}
               <div className={styles.propRow}>
                 <span className={styles.propLabel}>Volume</span>
                 <input
@@ -1165,10 +1249,46 @@ export const PropertiesPanel: React.FC = () => {
                   className={styles.propSlider}
                   onChange={(e) => updateClip(selectedClip.id, { volume: parseFloat(e.target.value) })}
                 />
-                <span className={styles.propValue}>{Math.round(selectedClip.volume * 100)}%</span>
+                <span className={styles.propValue} style={{ color: selectedClip.isMuted ? '#f43f5e' : '#34d399', fontWeight: 700 }}>
+                  {formatVolumeText(selectedClip.volume, selectedClip.isMuted)}
+                </span>
               </div>
 
-              <div className={styles.propRow}>
+              {/* Quick Volume Preset Buttons */}
+              <div className={styles.quickActionsRow} style={{ marginTop: '6px' }}>
+                <button
+                  type="button"
+                  className={styles.quickActionBtn}
+                  onClick={() => updateClip(selectedClip.id, { volume: 0, isMuted: true })}
+                  style={{ color: selectedClip.isMuted || selectedClip.volume === 0 ? '#f43f5e' : undefined }}
+                >
+                  🔇 Mudo (0%)
+                </button>
+                <button
+                  type="button"
+                  className={styles.quickActionBtn}
+                  onClick={() => updateClip(selectedClip.id, { volume: 0.5, isMuted: false })}
+                >
+                  50% (-6dB)
+                </button>
+                <button
+                  type="button"
+                  className={styles.quickActionBtn}
+                  onClick={() => updateClip(selectedClip.id, { volume: 1.0, isMuted: false })}
+                  style={{ color: !selectedClip.isMuted && selectedClip.volume === 1.0 ? '#34d399' : undefined, fontWeight: 700 }}
+                >
+                  100% (0dB)
+                </button>
+                <button
+                  type="button"
+                  className={styles.quickActionBtn}
+                  onClick={() => updateClip(selectedClip.id, { volume: 1.5, isMuted: false })}
+                >
+                  150% (+3.5dB)
+                </button>
+              </div>
+
+              <div className={styles.propRow} style={{ marginTop: '8px' }}>
                 <span className={styles.propLabel}>Silenciar Clipe</span>
                 <input
                   type="checkbox"

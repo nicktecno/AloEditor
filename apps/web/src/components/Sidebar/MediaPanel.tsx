@@ -81,24 +81,31 @@ export const MediaPanel: React.FC = () => {
     }
 
     const fileId = match[0];
+    const savedToken =
+      googleAccessToken ||
+      (typeof window !== 'undefined'
+        ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
+        : '') ||
+      '';
+
     const newAsset: MediaAsset = {
       id: `asset_drive_${fileId}_${Date.now()}`,
       name: `Drive_Video_${fileId.substring(0, 6)}.mp4`,
       type: 'video',
-      url: `/api/drive/stream?fileId=${fileId}&token=${googleAccessToken || ''}`,
+      url: `/api/drive/stream?fileId=${fileId}&token=${savedToken}`,
       driveFileId: fileId,
       duration: 15.0,
       isDrive: true,
-      status: 'importing',
-      preloadProgress: 5,
-      thumbnailUrl: 'https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&auto=format&fit=crop&q=60',
+      status: 'ready',
+      preloadProgress: 100,
+      thumbnailUrl: `https://drive.google.com/thumbnail?id=${fileId}&sz=w640`,
     };
 
     addAsset(newAsset);
     addClipToTrack(newAsset);
     setDriveUrlInput('');
     setIsUrlInputOpen(false);
-    showFeedback('Vídeo do Google Drive importado com sucesso!');
+    showFeedback('Vídeo do Google Drive pronto para edição!');
   };
 
   const showFeedback = (msg: string) => {
@@ -268,8 +275,8 @@ export const MediaPanel: React.FC = () => {
         url,
         duration: detectedDuration,
         size: file.size,
-        status: isVideo ? 'importing' : 'ready',
-        preloadProgress: isVideo ? 25 : 100,
+        status: 'ready',
+        preloadProgress: 100,
         thumbnailUrl: isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined,
       };
 
@@ -292,7 +299,13 @@ export const MediaPanel: React.FC = () => {
   };
 
   const handleSelectDriveFile = (file: GoogleDriveFile) => {
-    const streamUrl = `/api/drive/stream?fileId=${file.id}&token=${googleAccessToken}`;
+    const savedToken =
+      googleAccessToken ||
+      (typeof window !== 'undefined'
+        ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
+        : '') ||
+      '';
+    const streamUrl = `/api/drive/stream?fileId=${file.id}&token=${savedToken}`;
     const newAsset: MediaAsset = {
       id: `asset_drive_${file.id}`,
       name: file.name,
@@ -301,9 +314,9 @@ export const MediaPanel: React.FC = () => {
       driveFileId: file.id,
       duration: file.durationSeconds || 15.0,
       isDrive: true,
-      status: file.mimeType.startsWith('video') ? 'importing' : 'ready',
-      preloadProgress: file.mimeType.startsWith('video') ? 5 : 100,
-      thumbnailUrl: file.thumbnailUrl || (file.mimeType.startsWith('audio') ? undefined : GENERIC_VIDEO_THUMBNAIL),
+      status: 'ready',
+      preloadProgress: 100,
+      thumbnailUrl: file.thumbnailUrl || `https://drive.google.com/thumbnail?id=${file.id}&sz=w640`,
       size: file.sizeBytes,
     };
     addAsset(newAsset);

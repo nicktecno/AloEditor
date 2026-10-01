@@ -169,7 +169,9 @@ export const PlayerControls: React.FC = () => {
           const importingAsset = project.assets.find(
             (a) =>
               a.type === 'video' &&
-              (a.status === 'importing' || ((a.preloadProgress ?? 100) < 100 && !a.proxyUrl))
+              a.status === 'importing' &&
+              !a.url &&
+              !a.proxyUrl
           );
           if (importingAsset) {
             return (

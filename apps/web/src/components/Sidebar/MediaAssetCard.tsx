@@ -210,8 +210,8 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
             : `${duration.toFixed(1)}s`}
         </div>
 
-        {/* Full Importing & Cache Generating Overlay */}
-        {isVideo && (asset.status === 'importing' || ((asset.preloadProgress !== undefined) && asset.preloadProgress < 100 && !asset.proxyUrl)) && (
+        {/* Full Importing Overlay (only if no playable stream/proxy URL exists yet) */}
+        {isVideo && asset.status === 'importing' && !asset.url && !asset.proxyUrl && (
           <div className={styles.importingOverlay} onClick={(e) => e.stopPropagation()}>
             <div className={styles.importingSpinner} />
             <div className={styles.importingTextGroup}>

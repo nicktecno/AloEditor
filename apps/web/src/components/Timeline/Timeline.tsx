@@ -283,8 +283,8 @@ export const Timeline: React.FC = () => {
             url,
             duration: detectedDuration,
             size: file.size,
-            status: isVideo ? 'importing' : 'ready',
-            preloadProgress: isVideo ? 25 : 100,
+            status: 'ready',
+            preloadProgress: 100,
             thumbnailUrl: isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined,
           };
 
@@ -341,22 +341,33 @@ export const Timeline: React.FC = () => {
     }
   };
 
-  // Playhead dragging with pointer capture
+  // Playhead dragging with pointer capture & edge auto-scrolling
   const handlePlayheadPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
     e.preventDefault();
 
     const targetEl = e.currentTarget;
-    targetEl.setPointerCapture(e.pointerId);
+    try {
+      targetEl.setPointerCapture(e.pointerId);
+    } catch {}
 
     let rafId: number | null = null;
     let pendingTime: number | null = null;
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       if (!scrollContainerRef.current) return;
-      const rect = scrollContainerRef.current.getBoundingClientRect();
-      const x = moveEvent.clientX - rect.left + scrollContainerRef.current.scrollLeft;
+      const container = scrollContainerRef.current;
+      const rect = container.getBoundingClientRect();
+      const x = moveEvent.clientX - rect.left + container.scrollLeft;
       pendingTime = Math.max(0, x / zoom);
+
+      // Auto-scroll when scrubbing near edge on mobile/desktop
+      const edgeThreshold = 45;
+      if (moveEvent.clientX > rect.right - edgeThreshold) {
+        container.scrollLeft += 15;
+      } else if (moveEvent.clientX < rect.left + edgeThreshold) {
+        container.scrollLeft -= 15;
+      }
 
       if (rafId === null) {
         rafId = requestAnimationFrame(() => {
@@ -383,24 +394,43 @@ export const Timeline: React.FC = () => {
       }
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
     };
 
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
   };
 
-  // Click on empty track area to move playhead and deselect
-  const handleTrackLaneClick = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Only fire if clicking on the lane itself, not on a clip
-    if ((e.target as HTMLElement).closest(`.${styles.clipItem}`)) {
-      return;
-    }
+  // Distinguish quick tap/click from touch swipe/scroll on mobile
+  const trackPointerStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
-    if (!scrollContainerRef.current) return;
-    const rect = scrollContainerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
-    setCurrentTime(Math.max(0, x / zoom));
-    clearSelection();
+  const handleTrackLanePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest(`.${styles.clipItem}`)) return;
+    trackPointerStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      time: Date.now(),
+    };
+  };
+
+  const handleTrackLanePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!trackPointerStartRef.current) return;
+    const dx = Math.abs(e.clientX - trackPointerStartRef.current.x);
+    const dy = Math.abs(e.clientY - trackPointerStartRef.current.y);
+    const dt = Date.now() - trackPointerStartRef.current.time;
+    trackPointerStartRef.current = null;
+
+    // Only position playhead if user did a quick tap (< 10px displacement, < 450ms)
+    // If user swiped/scrolled horizontally across tracks, DO NOT alter currentTime or clearSelection
+    if (dx < 10 && dy < 10 && dt < 450) {
+      if ((e.target as HTMLElement).closest(`.${styles.clipItem}`)) return;
+      if (!scrollContainerRef.current) return;
+      const rect = scrollContainerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
+      setCurrentTime(Math.max(0, x / zoom));
+      clearSelection();
+    }
   };
 
   return (
@@ -649,7 +679,8 @@ export const Timeline: React.FC = () => {
           <div
             className={styles.tracksContentContainer}
             style={{ width: `${totalWidth}px` }}
-            onPointerDown={handleTrackLaneClick}
+            onPointerDown={handleTrackLanePointerDown}
+            onPointerUp={handleTrackLanePointerUp}
             onDragOver={handleTrackDragOver}
             onDragLeave={handleTrackDragLeave}
             onDrop={(e) => handleTrackDrop(e, 'track_video_main')}

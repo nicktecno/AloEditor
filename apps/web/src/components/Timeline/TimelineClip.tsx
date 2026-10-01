@@ -5,6 +5,7 @@ import { useEditor } from '@/context/EditorContext';
 import { TimelineClip as ITimelineClip } from '@/types/editor';
 import { Film, Type, Music, Layers, VolumeX, Volume2, Cloud } from 'lucide-react';
 import { GENERIC_VIDEO_THUMBNAIL, handleThumbnailError } from '@/utils/thumbnailGenerator';
+import { TimelineWaveform } from './TimelineWaveform';
 import styles from './Timeline.module.css';
 
 interface TimelineClipProps {
@@ -25,6 +26,8 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     googleAccessToken,
     loginWithGoogle,
     setIsDrivePickerOpen,
+    setInspectorTab,
+    toggleInspector,
   } = useEditor();
 
   const asset = project.assets.find((a) => a.id === clip.assetId);
@@ -49,10 +52,15 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
 
   // Drag to move along track with Multi-Select & Magnetism
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Only respond to main mouse button
-    if (e.button !== 0) return;
+    // Only filter secondary buttons if coming from a mouse
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
 
     e.stopPropagation();
+
+    const targetEl = e.currentTarget;
+    try {
+      targetEl.setPointerCapture(e.pointerId);
+    } catch {}
 
     const isModifier = e.shiftKey || e.metaKey || e.ctrlKey;
 
@@ -146,6 +154,17 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
         didMove = true;
       }
 
+      // Auto-scroll when dragging clip near edge of screen
+      const scrollEl = document.getElementById('alo_timeline_scrollable');
+      if (scrollEl) {
+        const sRect = scrollEl.getBoundingClientRect();
+        if (moveEvent.clientX > sRect.right - 40) {
+          scrollEl.scrollLeft += 14;
+        } else if (moveEvent.clientX < sRect.left + 40) {
+          scrollEl.scrollLeft -= 14;
+        }
+      }
+
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         Object.entries(initialStartsRef.current).forEach(([cId, initStart]) => {
@@ -155,7 +174,12 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
       });
     };
 
-    const onPointerUp = () => {
+    const onPointerUp = (upEv?: PointerEvent) => {
+      try {
+        if (upEv) {
+          targetEl.releasePointerCapture(upEv.pointerId);
+        }
+      } catch {}
       if (rafId) {
         cancelAnimationFrame(rafId);
         rafId = null;
@@ -185,6 +209,11 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
   const handleTrimLeft = (e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
     e.preventDefault();
+
+    const targetEl = e.currentTarget;
+    try {
+      targetEl.setPointerCapture(e.pointerId);
+    } catch {}
 
     const startX = e.clientX;
     const initialStart = clip.startInTimeline;
@@ -248,6 +277,17 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
         didChange = true;
       }
 
+      // Auto-scroll when trimming near edge
+      const scrollEl = document.getElementById('alo_timeline_scrollable');
+      if (scrollEl) {
+        const sRect = scrollEl.getBoundingClientRect();
+        if (moveEvent.clientX > sRect.right - 40) {
+          scrollEl.scrollLeft += 12;
+        } else if (moveEvent.clientX < sRect.left + 40) {
+          scrollEl.scrollLeft -= 12;
+        }
+      }
+
       updateClip(clip.id, {
         startInTimeline: formattedStart,
         duration: formattedDuration,
@@ -256,7 +296,12 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
       });
     };
 
-    const onPointerUp = () => {
+    const onPointerUp = (upEv?: PointerEvent) => {
+      try {
+        if (upEv) {
+          targetEl.releasePointerCapture(upEv.pointerId);
+        }
+      } catch {}
       setSnapGuideTime(null);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
@@ -275,6 +320,11 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
   const handleTrimRight = (e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
     e.preventDefault();
+
+    const targetEl = e.currentTarget;
+    try {
+      targetEl.setPointerCapture(e.pointerId);
+    } catch {}
 
     const startX = e.clientX;
     const initialDuration = clip.duration;
@@ -314,13 +364,29 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
         didChange = true;
       }
 
+      // Auto-scroll when trimming near edge
+      const scrollEl = document.getElementById('alo_timeline_scrollable');
+      if (scrollEl) {
+        const sRect = scrollEl.getBoundingClientRect();
+        if (moveEvent.clientX > sRect.right - 40) {
+          scrollEl.scrollLeft += 12;
+        } else if (moveEvent.clientX < sRect.left + 40) {
+          scrollEl.scrollLeft -= 12;
+        }
+      }
+
       updateClip(clip.id, {
         duration: formattedDuration,
         trimEnd: formattedTrimEnd,
       });
     };
 
-    const onPointerUp = () => {
+    const onPointerUp = (upEv?: PointerEvent) => {
+      try {
+        if (upEv) {
+          targetEl.releasePointerCapture(upEv.pointerId);
+        }
+      } catch {}
       setSnapGuideTime(null);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
@@ -338,7 +404,9 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
   const isImporting =
     clip.type === 'video' &&
     asset &&
-    (asset.status === 'importing' || ((asset.preloadProgress !== undefined) && asset.preloadProgress < 100 && !asset.proxyUrl));
+    asset.status === 'importing' &&
+    !asset.url &&
+    !asset.proxyUrl;
 
   const isDriveAuthNeeded =
     asset?.isDrive &&
@@ -421,70 +489,140 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
         />
       )}
 
-      {/* Clip Content & Icon */}
-      <div className={styles.clipBody}>
-        {clip.type === 'video' ? (
-          <div className={styles.clipThumbPreview} title={clip.name}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={asset?.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
-              alt=""
-              className={styles.clipThumbImg}
-              onError={handleThumbnailError}
+      {/* Clip Content & Media Display */}
+      {clip.type === 'video' ? (
+        <div className={styles.videoClipContainer}>
+          {/* Top Row: Video Thumbnail preview & Clip Name */}
+          <div className={styles.videoTopRow}>
+            <div className={styles.clipThumbPreview} title={clip.name}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={asset?.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
+                alt=""
+                className={styles.clipThumbImg}
+                onError={handleThumbnailError}
+              />
+            </div>
+            <Film size={12} className={styles.videoClipIcon} />
+
+            {clip.isMuted && (
+              <span title="Áudio silenciado" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                <VolumeX size={12} color="#f43f5e" style={{ flexShrink: 0 }} />
+              </span>
+            )}
+
+            {widthPos >= 50 && clip.transitionIn && clip.transitionIn.type !== 'none' && (
+              <span className={styles.clipTransitionBadge}>
+                ⚡ {clip.transitionIn.type}
+              </span>
+            )}
+
+            {widthPos >= 40 && (
+              <span className={styles.clipName} title={clip.name}>
+                {clip.name}
+              </span>
+            )}
+
+            {widthPos >= 50 && clip.effect && clip.effect !== 'none' && (
+              <span className={styles.clipFxBadge}>FX</span>
+            )}
+
+            {widthPos >= 50 && clip.transitionOut && clip.transitionOut.type !== 'none' && (
+              <span className={styles.clipTransitionBadge}>
+                {clip.transitionOut.type} ⚡
+              </span>
+            )}
+
+            {widthPos >= 30 && <span className={styles.clipDuration}>{clip.duration.toFixed(1)}s</span>}
+          </div>
+
+          {/* Bottom Row: CapCut Audio Waveform & Draggable Volume Envelope Line */}
+          <div className={styles.clipVideoAudioSection}>
+            <TimelineWaveform
+              clip={clip}
+              assetUrl={asset?.proxyUrl || asset?.url}
+              assetDuration={asset?.duration}
+              width={widthPos}
+              height={32}
+              colorScheme="video"
+              onVolumeChange={(newVol) => updateClip(clip.id, { volume: newVol })}
+              onVolumeCommit={() => commitHistory()}
+              onSelectAudio={() => {
+                selectClip(clip.id, false);
+                setInspectorTab('audio');
+                toggleInspector(true);
+              }}
             />
           </div>
-        ) : isOverlay ? (
-          <Layers size={14} color="#fbbf24" style={{ flexShrink: 0 }} />
-        ) : clip.type === 'text' ? (
-          <Type size={14} style={{ flexShrink: 0 }} />
-        ) : (
-          <Music size={14} style={{ flexShrink: 0 }} />
-        )}
+        </div>
+      ) : clip.type === 'audio' ? (
+        <div className={styles.audioClipContainer}>
+          {/* Audio Title Overlay */}
+          <div className={styles.audioTopInfoOverlay}>
+            <Music size={12} color="#34d399" style={{ flexShrink: 0 }} />
+            {clip.isMuted && <VolumeX size={12} color="#f43f5e" style={{ flexShrink: 0 }} />}
+            {widthPos >= 40 && (
+              <span className={styles.clipName} title={clip.name} style={{ fontSize: '11px', color: '#ecfdf5' }}>
+                {clip.name}
+              </span>
+            )}
+            {widthPos >= 30 && (
+              <span className={styles.clipDuration} style={{ fontSize: '10px', color: '#a7f3d0' }}>
+                {clip.duration.toFixed(1)}s
+              </span>
+            )}
+          </div>
 
-        {clip.isMuted && (
-          <span title="Áudio silenciado" style={{ display: 'inline-flex', alignItems: 'center' }}>
-            <VolumeX size={13} color="#f43f5e" style={{ flexShrink: 0 }} />
-          </span>
-        )}
+          {/* Full Waveform with Volume Envelope */}
+          <TimelineWaveform
+            clip={clip}
+            assetUrl={asset?.proxyUrl || asset?.url}
+            assetDuration={asset?.duration}
+            width={widthPos}
+            height={34}
+            colorScheme="audio"
+            onVolumeChange={(newVol) => updateClip(clip.id, { volume: newVol })}
+            onVolumeCommit={() => commitHistory()}
+            onSelectAudio={() => {
+              selectClip(clip.id, false);
+              setInspectorTab('audio');
+              toggleInspector(true);
+            }}
+          />
+        </div>
+      ) : (
+        <div className={styles.clipBody}>
+          {isOverlay ? (
+            <Layers size={14} color="#fbbf24" style={{ flexShrink: 0 }} />
+          ) : (
+            <Type size={14} style={{ flexShrink: 0 }} />
+          )}
 
-        {/* Transition In Badge */}
-        {widthPos >= 50 && clip.transitionIn && clip.transitionIn.type !== 'none' && (
-          <span
-            className={styles.clipTransitionBadge}
-            title={clip.type === 'audio' ? `Fade In de áudio: ${clip.transitionIn.duration}s` : `Transição de entrada: ${clip.transitionIn.type} (${clip.transitionIn.duration}s)`}
-          >
-            ⚡ {clip.type === 'audio' ? `Fade (${clip.transitionIn.duration}s)` : clip.transitionIn.type}
-          </span>
-        )}
+          {widthPos >= 50 && clip.transitionIn && clip.transitionIn.type !== 'none' && (
+            <span className={styles.clipTransitionBadge}>
+              ⚡ {clip.transitionIn.type}
+            </span>
+          )}
 
-        {widthPos >= 40 && (
-          <span className={styles.clipName} title={clip.name}>
-            {clip.name}
-          </span>
-        )}
+          {widthPos >= 40 && (
+            <span className={styles.clipName} title={clip.name}>
+              {clip.name}
+            </span>
+          )}
 
-        {/* Effect FX Badge */}
-        {widthPos >= 50 && clip.effect && clip.effect !== 'none' && (
-          <span
-            className={styles.clipFxBadge}
-            title={`Efeito ativo: ${clip.effect}`}
-          >
-            FX
-          </span>
-        )}
+          {widthPos >= 50 && clip.effect && clip.effect !== 'none' && (
+            <span className={styles.clipFxBadge}>FX</span>
+          )}
 
-        {/* Transition Out Badge */}
-        {widthPos >= 50 && clip.transitionOut && clip.transitionOut.type !== 'none' && (
-          <span
-            className={styles.clipTransitionBadge}
-            title={`Transição de saída: ${clip.transitionOut.type} (${clip.transitionOut.duration}s)`}
-          >
-            {clip.transitionOut.type} ⚡
-          </span>
-        )}
+          {widthPos >= 50 && clip.transitionOut && clip.transitionOut.type !== 'none' && (
+            <span className={styles.clipTransitionBadge}>
+              {clip.transitionOut.type} ⚡
+            </span>
+          )}
 
-        {widthPos >= 30 && <span className={styles.clipDuration}>{clip.duration.toFixed(1)}s</span>}
-      </div>
+          {widthPos >= 30 && <span className={styles.clipDuration}>{clip.duration.toFixed(1)}s</span>}
+        </div>
+      )}
 
       {/* Right Trim Handle */}
       {widthPos >= 20 && (

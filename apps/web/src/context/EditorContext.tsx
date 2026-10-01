@@ -301,11 +301,20 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (saved) {
         const parsed: Project = JSON.parse(saved);
         if (parsed && Array.isArray(parsed.clips) && Array.isArray(parsed.tracks)) {
-          // Invalidate any dead blob URLs from previous browser sessions
-          parsed.assets = (parsed.assets || []).map((asset) => ({
-            ...asset,
-            proxyUrl: asset.proxyUrl?.startsWith('blob:') ? undefined : asset.proxyUrl,
-          }));
+          // Invalidate any dead blob URLs from previous browser sessions and reset false isDrive on local sample assets
+          parsed.assets = (parsed.assets || []).map((asset) => {
+            const isLocalSample = asset.url?.startsWith('/samples/') || asset.url?.includes('flower.mp4') || asset.url?.includes('interview.mp4');
+            return {
+              ...asset,
+              isDrive: isLocalSample ? false : asset.isDrive,
+              driveFileId: isLocalSample ? undefined : asset.driveFileId,
+              proxyUrl: asset.proxyUrl?.startsWith('blob:') ? undefined : asset.proxyUrl,
+            };
+          });
+          // Clean up any obsolete empty track_audio_main since audio is integrated on media tracks
+          parsed.tracks = parsed.tracks.filter(
+            (t) => t.id !== 'track_audio_main' || parsed.clips.some((c) => c.trackId === 'track_audio_main')
+          );
           setProject(parsed);
           setHistory([parsed]);
           setHistoryIndex(0);
@@ -467,103 +476,51 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       } catch {}
 
-      // Se for vídeo do Google Drive e NÃO temos token ativo:
-      if (asset.isDrive && !googleAccessToken) {
-        setProject((prev) => ({
-          ...prev,
-          assets: prev.assets.map((a) =>
-            a.id === asset.id ? { ...a, isAuthExpired: true, status: 'error' } : a
-          ),
-        }));
-        return;
-      }
+      const activeToken =
+        googleAccessToken ||
+        (typeof window !== 'undefined'
+          ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
+          : null);
 
       activeCachingTasks.current.add(cacheKey);
 
       // 2. Se for vídeo do Google Drive
       if (asset.isDrive && asset.driveFileId) {
-        setProject((prev) => ({
-          ...prev,
-          assets: prev.assets.map((a) =>
-            a.id === asset.id
-              ? { ...a, status: 'importing', preloadProgress: Math.max(a.preloadProgress ?? 0, 5), isAuthExpired: false }
-              : a
-          ),
-        }));
-
         try {
           const blobUrl = await preloadDriveVideo({
             fileId: asset.driveFileId,
             streamUrl: asset.url,
-            token: googleAccessToken,
-            onProgress: (percent) => {
-              setProject((prev) => ({
-                ...prev,
-                assets: prev.assets.map((a) =>
-                  a.id === asset.id
-                    ? {
-                        ...a,
-                        preloadProgress: percent,
-                        status: percent >= 100 ? 'ready' : 'importing',
-                        isAuthExpired: false,
-                      }
-                    : a
-                ),
-              }));
-            },
+            token: activeToken,
+            onProgress: () => {},
           });
 
-          setProject((prev) => ({
-            ...prev,
-            assets: prev.assets.map((a) =>
-              a.id === asset.id
-                ? { ...a, proxyUrl: blobUrl, preloadProgress: 100, status: 'ready', isAuthExpired: false, isOffline: false }
-                : a
-            ),
-          }));
+          if (blobUrl && blobUrl.startsWith('blob:')) {
+            setProject((prev) => ({
+              ...prev,
+              assets: prev.assets.map((a) =>
+                a.id === asset.id
+                  ? {
+                      ...a,
+                      proxyUrl: blobUrl,
+                      preloadProgress: 100,
+                      status: 'ready',
+                      isAuthExpired: false,
+                      isOffline: false,
+                    }
+                  : a
+              ),
+            }));
+          }
         } catch (err: any) {
-          console.warn('Falha no pré-carregamento do cache do Drive:', err);
-          const isAuthErr =
-            err?.message?.includes('AUTH_EXPIRED') ||
-            err?.message?.includes('401') ||
-            err?.message?.includes('403') ||
-            err?.message?.includes('token');
-
-          setProject((prev) => ({
-            ...prev,
-            assets: prev.assets.map((a) =>
-              a.id === asset.id
-                ? {
-                    ...a,
-                    status: 'error',
-                    isAuthExpired: isAuthErr ? true : a.isAuthExpired,
-                    preloadProgress: isAuthErr ? 0 : 100,
-                  }
-                : a
-            ),
-          }));
+          console.warn('Cache local em background não concluiu, mantendo reprodução via streaming:', err?.message);
         } finally {
           activeCachingTasks.current.delete(cacheKey);
         }
       } else if (!asset.isDrive && asset.url) {
         // Vídeo local: persiste em cache IndexedDB para não perder referência e dar suporte a busca em 0ms
-        setProject((prev) => ({
-          ...prev,
-          assets: prev.assets.map((a) =>
-            a.id === asset.id ? { ...a, status: 'importing', preloadProgress: 35 } : a
-          ),
-        }));
-
         try {
           const res = await fetch(asset.url);
           const blob = await res.blob();
-          setProject((prev) => ({
-            ...prev,
-            assets: prev.assets.map((a) =>
-              a.id === asset.id ? { ...a, preloadProgress: 80 } : a
-            ),
-          }));
-
           const cachedBlobUrl = await cacheLocalVideoBlob(asset.id, blob);
           setProject((prev) => ({
             ...prev,
@@ -574,13 +531,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             ),
           }));
         } catch (e) {
-          console.warn('Erro ao indexar vídeo local:', e);
-          setProject((prev) => ({
-            ...prev,
-            assets: prev.assets.map((a) =>
-              a.id === asset.id ? { ...a, status: 'ready', preloadProgress: 100 } : a
-            ),
-          }));
+          console.warn('Indexação de vídeo local em background finalizada:', e);
         } finally {
           activeCachingTasks.current.delete(cacheKey);
         }
@@ -709,7 +660,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (savedClientId) setGoogleClientId(savedClientId);
     if (savedApiKey && !savedApiKey.startsWith('GOCSPX')) setGoogleApiKey(savedApiKey);
 
-    const savedToken = sessionStorage.getItem('alo_google_access_token');
+    const savedToken =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('alo_google_access_token') || sessionStorage.getItem('alo_google_access_token')
+        : null;
+
     if (savedToken) {
       fetchGoogleProfile(savedToken)
         .then((profile) => {
@@ -720,33 +675,25 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             updateDriveAssetsToken(savedToken);
             loadDriveVideos(false).catch(() => {});
           } else {
-            // Token expirado: limpa credenciais da sessão
-            sessionStorage.removeItem('alo_google_access_token');
+            // Token expirado: limpa credenciais da sessão e storage
+            try {
+              localStorage.removeItem('alo_google_access_token');
+              sessionStorage.removeItem('alo_google_access_token');
+            } catch {}
             setGoogleAccessToken(null);
             setDriveUser(null);
             setIsDriveConnected(false);
-            setProject((prev) => ({
-              ...prev,
-              assets: prev.assets.map((a) =>
-                a.isDrive && !a.proxyUrl ? { ...a, isAuthExpired: true } : a
-              ),
-            }));
           }
         })
         .catch(() => {
-          sessionStorage.removeItem('alo_google_access_token');
+          try {
+            localStorage.removeItem('alo_google_access_token');
+            sessionStorage.removeItem('alo_google_access_token');
+          } catch {}
           setGoogleAccessToken(null);
           setDriveUser(null);
           setIsDriveConnected(false);
         });
-    } else {
-      // Sem token salvo: sinaliza mídias do Drive sem cache local
-      setProject((prev) => ({
-        ...prev,
-        assets: prev.assets.map((a) =>
-          a.isDrive && !a.proxyUrl ? { ...a, isAuthExpired: true } : a
-        ),
-      }));
     }
   }, [loadDriveVideos, updateDriveAssetsToken]);
 
@@ -768,7 +715,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       googleClientId,
       async (token: string) => {
         setGoogleAccessToken(token);
-        sessionStorage.setItem('alo_google_access_token', token);
+        try {
+          localStorage.setItem('alo_google_access_token', token);
+          sessionStorage.setItem('alo_google_access_token', token);
+        } catch {}
         setIsDriveConnected(true);
         updateDriveAssetsToken(token);
         const profile = await fetchGoogleProfile(token);
@@ -790,8 +740,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setDriveUser(null);
     setIsDriveConnected(false);
     setDriveVideos([]);
-    sessionStorage.removeItem('alo_google_access_token');
-    sessionStorage.removeItem('alo_drive_videos_cache');
+    try {
+      localStorage.removeItem('alo_google_access_token');
+      sessionStorage.removeItem('alo_google_access_token');
+      sessionStorage.removeItem('alo_drive_videos_cache');
+    } catch {}
     // Para mídias do Drive sem cache persistido no navegador:
     setProject((prev) => ({
       ...prev,
@@ -1968,9 +1921,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       tracks: [
         { id: 'track_text', name: 'Texto & Títulos', type: 'text', isMuted: false, isLocked: false, isHidden: false, order: 0 },
         { id: 'track_video_main', name: 'Vídeo Principal', type: 'video', isMuted: false, isLocked: false, isHidden: false, order: 1 },
-        { id: 'track_audio_main', name: 'Áudio do Vídeo', type: 'audio', isMuted: false, isLocked: false, isHidden: false, order: 2 },
-        { id: 'track_video_overlay', name: 'Sobreposição (B-Roll)', type: 'video', isMuted: false, isLocked: false, isHidden: false, order: 3 },
-        { id: 'track_audio_bg', name: 'Trilha Sonora', type: 'audio', isMuted: false, isLocked: false, isHidden: false, order: 4 },
+        { id: 'track_video_overlay', name: 'Sobreposição (B-Roll)', type: 'video', isMuted: false, isLocked: false, isHidden: false, order: 2 },
+        { id: 'track_audio_bg', name: 'Trilha Sonora', type: 'audio', isMuted: false, isLocked: false, isHidden: false, order: 3 },
       ],
       clips: [],
       assets: [],

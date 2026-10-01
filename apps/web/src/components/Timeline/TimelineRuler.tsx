@@ -50,6 +50,14 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({ totalDuration, tot
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!rulerRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const targetEl = e.currentTarget;
+    try {
+      targetEl.setPointerCapture(e.pointerId);
+    } catch {}
+
     const rect = rulerRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickedTime = Math.max(0, clickX / zoom);
@@ -59,8 +67,21 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({ totalDuration, tot
     let pendingTime: number | null = null;
 
     const onPointerMove = (moveEvent: PointerEvent) => {
-      const currentX = moveEvent.clientX - rect.left;
+      if (!rulerRef.current) return;
+      const rRect = rulerRef.current.getBoundingClientRect();
+      const currentX = moveEvent.clientX - rRect.left;
       pendingTime = Math.max(0, currentX / zoom);
+
+      // Auto-scroll timeline container when scrubbing ruler near edge of screen
+      const scrollEl = document.getElementById('alo_timeline_scrollable');
+      if (scrollEl) {
+        const sRect = scrollEl.getBoundingClientRect();
+        if (moveEvent.clientX > sRect.right - 45) {
+          scrollEl.scrollLeft += 15;
+        } else if (moveEvent.clientX < sRect.left + 45) {
+          scrollEl.scrollLeft -= 15;
+        }
+      }
 
       if (rafId === null) {
         rafId = requestAnimationFrame(() => {
@@ -73,7 +94,12 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({ totalDuration, tot
       }
     };
 
-    const onPointerUp = () => {
+    const onPointerUp = (upEv?: PointerEvent) => {
+      try {
+        if (upEv) {
+          targetEl.releasePointerCapture(upEv.pointerId);
+        }
+      } catch {}
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
         rafId = null;
@@ -84,10 +110,12 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({ totalDuration, tot
       }
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
     };
 
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
   };
 
   return (

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { useEditor } from '@/context/EditorContext';
 import { getClipTransitionState, getClipAudioVolume } from '@/utils/transitionUtils';
 import { processFrameBackgroundRemoval } from '@/utils/backgroundRemoval';
@@ -25,8 +25,49 @@ const AudioTrackPlayer: React.FC<{
   onSyncDuration?: (assetId: string, duration: number) => void;
 }> = ({ clip, assetUrl, currentTime, isPlaying, onSyncDuration }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
   const lastClipIdRef = useRef<string | null>(null);
+  const isAudioPlayPendingRef = useRef<boolean>(false);
+
+  const safePlayAudio = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || isAudioPlayPendingRef.current || !audio.paused) return;
+    isAudioPlayPendingRef.current = true;
+    const promise = audio.play();
+    if (promise !== undefined) {
+      promise
+        .catch(() => {})
+        .finally(() => {
+          isAudioPlayPendingRef.current = false;
+        });
+    } else {
+      isAudioPlayPendingRef.current = false;
+    }
+  }, []);
+
+  const safePauseAudio = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isAudioPlayPendingRef.current) {
+      audio.play().then(() => {
+        audio.pause();
+        isAudioPlayPendingRef.current = false;
+      }).catch(() => {
+        audio.pause();
+        isAudioPlayPendingRef.current = false;
+      });
+    } else if (!audio.paused) {
+      audio.pause();
+    }
+  }, []);
+
+  // Isolate play/pause transitions from continuous currentTime frames
+  useEffect(() => {
+    if (isPlaying) {
+      safePlayAudio();
+    } else {
+      safePauseAudio();
+    }
+  }, [isPlaying, clip.id, safePlayAudio, safePauseAudio]);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -57,16 +98,10 @@ const AudioTrackPlayer: React.FC<{
       if (isClipSwitch || Math.abs(audioRef.current.currentTime - mediaOffset) > 0.05) {
         audioRef.current.currentTime = mediaOffset;
       }
-      if (!audioRef.current.paused) {
-        audioRef.current.pause();
-      }
     } else {
-      // While playing: only hard seek if switching clip or scrubbed (> 1.2s drift), avoiding audio clicks/stutters
+      // While playing: only seek if switching clip or scrubbed (> 1.2s drift), avoiding audio clicks/stutters
       if (isClipSwitch || Math.abs(audioRef.current.currentTime - mediaOffset) > 1.2) {
         audioRef.current.currentTime = mediaOffset;
-      }
-      if (audioRef.current.paused) {
-        audioRef.current.play().catch(() => {});
       }
     }
   }, [currentTime, isPlaying, clip]);
@@ -116,6 +151,91 @@ export const PlayerPreview: React.FC = () => {
   const [isVideoReady, setIsVideoReady] = React.useState(false);
   const bufferTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const mainVideoRef = useRef<HTMLVideoElement | null>(null);
+  const overlayVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mainCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+
+  const isMainPlayPendingRef = useRef<boolean>(false);
+  const isOverlayPlayPendingRef = useRef<boolean>(false);
+
+  const safePlayMain = useCallback(() => {
+    const vid = mainVideoRef.current;
+    if (!vid || isMainPlayPendingRef.current || !vid.paused) return;
+    isMainPlayPendingRef.current = true;
+    const promise = vid.play();
+    if (promise !== undefined) {
+      promise
+        .catch((err) => {
+          if (err.name === 'NotAllowedError' && !vid.muted) {
+            vid.muted = true;
+            return vid.play();
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          isMainPlayPendingRef.current = false;
+        });
+    } else {
+      isMainPlayPendingRef.current = false;
+    }
+  }, []);
+
+  const safePauseMain = useCallback(() => {
+    const vid = mainVideoRef.current;
+    if (!vid) return;
+    if (isMainPlayPendingRef.current) {
+      vid.play().then(() => {
+        vid.pause();
+        isMainPlayPendingRef.current = false;
+      }).catch(() => {
+        vid.pause();
+        isMainPlayPendingRef.current = false;
+      });
+    } else if (!vid.paused) {
+      vid.pause();
+    }
+  }, []);
+
+  const safePlayOverlay = useCallback(() => {
+    const vid = overlayVideoRef.current;
+    if (!vid || isOverlayPlayPendingRef.current || !vid.paused) return;
+    isOverlayPlayPendingRef.current = true;
+    const promise = vid.play();
+    if (promise !== undefined) {
+      promise
+        .catch((err) => {
+          if (err.name === 'NotAllowedError' && !vid.muted) {
+            vid.muted = true;
+            return vid.play();
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          isOverlayPlayPendingRef.current = false;
+        });
+    } else {
+      isOverlayPlayPendingRef.current = false;
+    }
+  }, []);
+
+  const safePauseOverlay = useCallback(() => {
+    const vid = overlayVideoRef.current;
+    if (!vid) return;
+    if (isOverlayPlayPendingRef.current) {
+      vid.play().then(() => {
+        vid.pause();
+        isOverlayPlayPendingRef.current = false;
+      }).catch(() => {
+        vid.pause();
+        isOverlayPlayPendingRef.current = false;
+      });
+    } else if (!vid.paused) {
+      vid.pause();
+    }
+  }, []);
+
   const handleWaiting = () => {
     if (bufferTimeoutRef.current) clearTimeout(bufferTimeoutRef.current);
     bufferTimeoutRef.current = setTimeout(() => {
@@ -123,7 +243,7 @@ export const PlayerPreview: React.FC = () => {
     }, 300);
   };
 
-  const handleCanPlay = () => {
+  const handleCanPlay = useCallback(() => {
     if (bufferTimeoutRef.current) {
       clearTimeout(bufferTimeoutRef.current);
       bufferTimeoutRef.current = null;
@@ -131,20 +251,10 @@ export const PlayerPreview: React.FC = () => {
     setIsBuffering(false);
     setIsVideoReady(true);
     if (isPlaying) {
-      if (mainVideoRef.current && mainVideoRef.current.paused) {
-        mainVideoRef.current.play().catch(() => {});
-      }
-      if (overlayVideoRef.current && overlayVideoRef.current.paused) {
-        overlayVideoRef.current.play().catch(() => {});
-      }
+      safePlayMain();
+      safePlayOverlay();
     }
-  };
-
-  const mainVideoRef = useRef<HTMLVideoElement | null>(null);
-  const overlayVideoRef = useRef<HTMLVideoElement | null>(null);
-  const mainCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const frameRef = useRef<HTMLDivElement | null>(null);
+  }, [isPlaying, safePlayMain, safePlayOverlay]);
 
   // Hardware Acceleration Refs & RAF Throttling
   const pendingMainSeekRef = useRef<number | null>(null);
@@ -155,31 +265,55 @@ export const PlayerPreview: React.FC = () => {
   const mainWebGLPipelineRef = useRef<WebGLVideoPipeline | null>(null);
   const overlayWebGLPipelineRef = useRef<WebGLVideoPipeline | null>(null);
 
-  const requestMainHardwareSeek = (targetTime: number, allowFast = true) => {
+  const requestMainHardwareSeek = useCallback((targetTime: number, allowFast = true) => {
     pendingMainSeekRef.current = targetTime;
     if (mainSeekRafRef.current === null) {
       mainSeekRafRef.current = requestAnimationFrame(() => {
         mainSeekRafRef.current = null;
-        if (mainVideoRef.current && pendingMainSeekRef.current !== null) {
-          seekHardwareAccelerated(mainVideoRef.current, pendingMainSeekRef.current, allowFast);
+        const vid = mainVideoRef.current;
+        if (vid && pendingMainSeekRef.current !== null) {
+          if (vid.seeking) {
+            const onSeeked = () => {
+              vid.removeEventListener('seeked', onSeeked);
+              if (pendingMainSeekRef.current !== null) {
+                seekHardwareAccelerated(vid, pendingMainSeekRef.current, allowFast);
+                pendingMainSeekRef.current = null;
+              }
+            };
+            vid.addEventListener('seeked', onSeeked, { once: true });
+            return;
+          }
+          seekHardwareAccelerated(vid, pendingMainSeekRef.current, allowFast);
           pendingMainSeekRef.current = null;
         }
       });
     }
-  };
+  }, []);
 
-  const requestOverlayHardwareSeek = (targetTime: number, allowFast = true) => {
+  const requestOverlayHardwareSeek = useCallback((targetTime: number, allowFast = true) => {
     pendingOverlaySeekRef.current = targetTime;
     if (overlaySeekRafRef.current === null) {
       overlaySeekRafRef.current = requestAnimationFrame(() => {
         overlaySeekRafRef.current = null;
-        if (overlayVideoRef.current && pendingOverlaySeekRef.current !== null) {
-          seekHardwareAccelerated(overlayVideoRef.current, pendingOverlaySeekRef.current, allowFast);
+        const vid = overlayVideoRef.current;
+        if (vid && pendingOverlaySeekRef.current !== null) {
+          if (vid.seeking) {
+            const onSeeked = () => {
+              vid.removeEventListener('seeked', onSeeked);
+              if (pendingOverlaySeekRef.current !== null) {
+                seekHardwareAccelerated(vid, pendingOverlaySeekRef.current, allowFast);
+                pendingOverlaySeekRef.current = null;
+              }
+            };
+            vid.addEventListener('seeked', onSeeked, { once: true });
+            return;
+          }
+          seekHardwareAccelerated(vid, pendingOverlaySeekRef.current, allowFast);
           pendingOverlaySeekRef.current = null;
         }
       });
     }
-  };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -288,6 +422,17 @@ export const PlayerPreview: React.FC = () => {
     };
   }, [isPlaying, activeMainClip?.id, activeMainClip?.startInTimeline, activeMainClip?.trimStart, activeMainClip?.speed, activeMainClip?.duration, setCurrentTime]);
 
+  // Isolated Play/Pause state transition effect - never runs on 60fps currentTime updates
+  useEffect(() => {
+    if (isPlaying) {
+      if (activeMainClip) safePlayMain();
+      if (activeOverlayClip) safePlayOverlay();
+    } else {
+      safePauseMain();
+      safePauseOverlay();
+    }
+  }, [isPlaying, activeMainClip?.id, activeOverlayClip?.id, safePlayMain, safePauseMain, safePlayOverlay, safePauseOverlay]);
+
   // Sync main video playback time & state & audio volume
   useEffect(() => {
     if (!mainVideoRef.current || !activeMainClip) return;
@@ -307,6 +452,11 @@ export const PlayerPreview: React.FC = () => {
       }
     } catch {}
 
+    const targetRate = activeMainClip.speed || 1.0;
+    if (mainVideoRef.current.playbackRate !== targetRate) {
+      mainVideoRef.current.playbackRate = targetRate;
+    }
+
     const isClipSwitch = lastMainClipIdRef.current !== activeMainClip.id;
     lastMainClipIdRef.current = activeMainClip.id;
 
@@ -314,29 +464,21 @@ export const PlayerPreview: React.FC = () => {
       if (isClipSwitch || Math.abs(mainVideoRef.current.currentTime - mediaOffset) > 0.05) {
         requestMainHardwareSeek(mediaOffset, true);
       }
-      if (!mainVideoRef.current.paused) {
-        mainVideoRef.current.pause();
-      }
     } else {
       // While playing: if timeline was advanced by the video element, DO NOT seek (prevents buffer cancellation)
       if (isVideoDrivingTimelineRef.current) {
         isVideoDrivingTimelineRef.current = false;
       } else {
-        // Only seek if switching clips or user clicked/scrubbed far away (> 2.0s jump)
-        if (isClipSwitch || Math.abs(mainVideoRef.current.currentTime - mediaOffset) > 2.0) {
+        // Only seek if switching clips or user clicked/scrubbed far away (> 1.5s jump)
+        if (isClipSwitch || Math.abs(mainVideoRef.current.currentTime - mediaOffset) > 1.5) {
           requestMainHardwareSeek(mediaOffset, true);
+          if (isClipSwitch) {
+            safePlayMain();
+          }
         }
       }
-      if (mainVideoRef.current.paused) {
-        mainVideoRef.current.play().catch((err) => {
-          if (mainVideoRef.current && mainVideoRef.current.paused) {
-            mainVideoRef.current.muted = true;
-            mainVideoRef.current.play().catch(() => {});
-          }
-        });
-      }
     }
-  }, [currentTime, isPlaying, activeMainClip]);
+  }, [currentTime, isPlaying, activeMainClip, requestMainHardwareSeek, safePlayMain]);
 
   // Sync overlay video playback time & state & audio volume
   useEffect(() => {
@@ -357,6 +499,11 @@ export const PlayerPreview: React.FC = () => {
       }
     } catch {}
 
+    const targetRate = activeOverlayClip.speed || 1.0;
+    if (overlayVideoRef.current.playbackRate !== targetRate) {
+      overlayVideoRef.current.playbackRate = targetRate;
+    }
+
     const isClipSwitch = lastOverlayClipIdRef.current !== activeOverlayClip.id;
     lastOverlayClipIdRef.current = activeOverlayClip.id;
 
@@ -364,31 +511,23 @@ export const PlayerPreview: React.FC = () => {
       if (isClipSwitch || Math.abs(overlayVideoRef.current.currentTime - mediaOffset) > 0.05) {
         requestOverlayHardwareSeek(mediaOffset, true);
       }
-      if (!overlayVideoRef.current.paused) {
-        overlayVideoRef.current.pause();
-      }
     } else {
-      // While playing: only hard seek on clip switch or significant user scrub (> 1.2s), preventing mobile decoder stalls
-      if (isClipSwitch || Math.abs(overlayVideoRef.current.currentTime - mediaOffset) > 1.2) {
+      // While playing: only hard seek on clip switch or significant user scrub (> 1.5s)
+      if (isClipSwitch || Math.abs(overlayVideoRef.current.currentTime - mediaOffset) > 1.5) {
         requestOverlayHardwareSeek(mediaOffset, true);
-      }
-      if (overlayVideoRef.current.paused) {
-        overlayVideoRef.current.play().catch((err) => {
-          if (overlayVideoRef.current && overlayVideoRef.current.paused) {
-            overlayVideoRef.current.muted = true;
-            overlayVideoRef.current.play().catch(() => {});
-          }
-        });
+        if (isClipSwitch) {
+          safePlayOverlay();
+        }
       }
     }
-  }, [currentTime, isPlaying, activeOverlayClip]);
+  }, [currentTime, isPlaying, activeOverlayClip, requestOverlayHardwareSeek, safePlayOverlay]);
 
   // Real-time Hardware WebGL Chroma Key & Background Removal for Overlay Video/Image
   useEffect(() => {
     let animId: number;
     const renderOverlayChroma = () => {
+      if (!activeOverlayClip?.backgroundRemoval?.enabled) return;
       if (
-        activeOverlayClip?.backgroundRemoval?.enabled &&
         overlayVideoRef.current &&
         overlayCanvasRef.current &&
         overlayVideoRef.current.readyState >= 2
@@ -439,8 +578,8 @@ export const PlayerPreview: React.FC = () => {
   useEffect(() => {
     let animId: number;
     const renderMainChroma = () => {
+      if (!activeMainClip?.backgroundRemoval?.enabled) return;
       if (
-        activeMainClip?.backgroundRemoval?.enabled &&
         mainVideoRef.current &&
         mainCanvasRef.current &&
         mainVideoRef.current.readyState >= 2
@@ -654,8 +793,8 @@ export const PlayerPreview: React.FC = () => {
             url,
             duration: detectedDuration,
             size: file.size,
-            status: isVideo ? 'importing' : 'ready',
-            preloadProgress: isVideo ? 25 : 100,
+            status: 'ready',
+            preloadProgress: 100,
             thumbnailUrl: isVideo ? GENERIC_VIDEO_THUMBNAIL : undefined,
           };
           addAsset(newAsset);
@@ -687,13 +826,12 @@ export const PlayerPreview: React.FC = () => {
       onDrop={handlePreviewDrop}
     >
       <div ref={frameRef} className={`${styles.aspectFrame} ${frameClass}`}>
-        {/* Importing & Cache Generation Floating Pill */}
-        {mainAsset && (mainAsset.status === 'importing' || ((mainAsset.preloadProgress ?? 100) < 100 && !mainAsset.proxyUrl)) && (
+        {/* Importing Floating Pill (Only when no playable stream/proxy URL exists yet) */}
+        {mainAsset && !mainAsset.proxyUrl && !mainAsset.url && mainAsset.status === 'importing' && (
           <div className={styles.playerImportingOverlay}>
             <div className={styles.playerImportingSpinner} />
             <div className={styles.playerImportingText}>
-              <span>Importando e gerando cache otimizado ({mainAsset.preloadProgress ?? 0}%)...</span>
-              <small>Reprodução instantânea em 0ms assim que concluído</small>
+              <span>Importando mídia ({mainAsset.preloadProgress ?? 0}%)...</span>
             </div>
           </div>
         )}
@@ -744,16 +882,6 @@ export const PlayerPreview: React.FC = () => {
                 onCanPlay={handleCanPlay}
                 onPlaying={handleCanPlay}
                 onSeeked={handleCanPlay}
-                onTimeUpdate={(e) => {
-                  if (!isPlaying || !activeMainClip) return;
-                  const v = e.currentTarget;
-                  if (v.paused) return;
-                  const timelineTime = activeMainClip.startInTimeline + (v.currentTime - activeMainClip.trimStart) / activeMainClip.speed;
-                  if (timelineTime >= activeMainClip.startInTimeline && timelineTime <= activeMainClip.startInTimeline + activeMainClip.duration) {
-                    isVideoDrivingTimelineRef.current = true;
-                    setCurrentTime(timelineTime);
-                  }
-                }}
                 onError={(e) => {
                   handleCanPlay();
                   const target = e.currentTarget;

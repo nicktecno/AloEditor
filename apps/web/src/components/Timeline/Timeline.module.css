@@ -166,8 +166,8 @@
 
 /* Audio Track Slim Header */
 .trackHeaderItemAudio {
-  height: 34px !important;
-  min-height: 34px !important;
+  height: 42px !important;
+  min-height: 42px !important;
   padding: 0 10px;
   background-color: rgba(6, 78, 59, 0.12);
   border-bottom: 1px solid rgba(16, 185, 129, 0.18);
@@ -241,7 +241,8 @@
   overflow-x: auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
   position: relative;
   background-color: var(--bg-app);
 }
@@ -260,6 +261,7 @@
   top: 0;
   z-index: 20;
   cursor: pointer;
+  touch-action: none;
 }
 
 .rulerTick {
@@ -290,12 +292,13 @@
   position: relative;
   background-image: linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
   background-size: 20px 100%;
+  touch-action: pan-x pan-y;
 }
 
 /* Audio Track Slim Lane */
 .trackLaneAudio {
-  height: 34px !important;
-  min-height: 34px !important;
+  height: 42px !important;
+  min-height: 42px !important;
   background-color: rgba(6, 78, 59, 0.05);
   background-image: linear-gradient(to right, rgba(16, 185, 129, 0.04) 1px, transparent 1px);
   background-size: 20px 100%;
@@ -469,7 +472,7 @@
 .clipItemAudio {
   top: 3px !important;
   bottom: 3px !important;
-  height: 28px !important;
+  height: 36px !important;
   background: linear-gradient(90deg, #064e3b 0%, #065f46 50%, #064e3b 100%) !important;
   border: 1px solid rgba(52, 211, 153, 0.6) !important;
   border-radius: 4px !important;
@@ -506,6 +509,172 @@
 .clipItemAudio .trimHandleLeft,
 .clipItemAudio .trimHandleRight {
   width: 10px;
+}
+
+/* Video Clip Container layout (CapCut style top video bar + bottom audio waveform) */
+.videoClipContainer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+.videoTopRow {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  background: rgba(15, 23, 42, 0.45);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+  overflow: hidden;
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.videoClipIcon {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.clipVideoAudioSection {
+  flex: 1;
+  position: relative;
+  background: rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  user-select: none;
+  border-top: 1px solid rgba(16, 185, 129, 0.15);
+}
+
+/* Audio Clip Waveform Section (Full Height with overlay info) */
+.audioClipContainer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+.audioTopInfoOverlay {
+  position: absolute;
+  top: 2px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 5;
+  overflow: hidden;
+}
+
+/* Audio Waveform Canvas & Envelope Container */
+.waveformContainer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.waveformCanvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* CapCut Draggable Volume Envelope Line */
+.volumeLineTrack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 16px;
+  margin-bottom: -8px;
+  cursor: ns-resize;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+.volumeLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  background: rgba(52, 211, 153, 0.85);
+  box-shadow: 0 0 4px rgba(16, 185, 129, 0.4);
+  pointer-events: none;
+  transition: background 0.15s, height 0.15s, box-shadow 0.15s;
+}
+
+.volumeLineTrack:hover .volumeLine,
+.volumeLineTrackActive .volumeLine {
+  background: #ffffff;
+  height: 2px;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.9), 0 0 12px rgba(52, 211, 153, 0.8);
+}
+
+.volumePillHandle {
+  position: relative;
+  z-index: 2;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(52, 211, 153, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: all 0.15s ease;
+}
+
+.volumeLineTrack:hover .volumePillHandle,
+.volumeLineTrackActive .volumePillHandle {
+  background: #10b981;
+  border-color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  transform: scale(1.08);
+}
+
+.volumePillText {
+  font-size: 9px;
+  font-weight: 700;
+  color: #a7f3d0;
+  font-family: var(--font-geist-mono);
+  white-space: nowrap;
+}
+
+.volumeLineTrack:hover .volumePillText,
+.volumeLineTrackActive .volumePillText {
+  color: #ffffff;
+}
+
+/* Floating Volume Dragging Tooltip */
+.volumeDragTooltip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid #34d399;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.8);
 }
 
 .clipAudioWaveform {
@@ -573,6 +742,18 @@
   justify-content: center;
   z-index: 6;
   touch-action: none;
+}
+
+/* Touch hit expansion for fingers */
+.trimHandleLeft::before,
+.trimHandleRight::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  left: -8px;
+  right: -8px;
+  z-index: 10;
 }
 
 .trimHandleLeft {
@@ -654,6 +835,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: none;
+}
+
+/* 44x44px touch area for fingers */
+.playheadHead::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  bottom: -15px;
+  left: -14px;
+  right: -14px;
+  z-index: 10;
 }
 
 .playheadHead:active {
@@ -759,6 +952,8 @@
     padding: 0 8px;
     gap: 4px;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
     scrollbar-width: none;
   }
 
@@ -776,8 +971,8 @@
   }
 
   .trackHeadersColumn {
-    width: 52px;
-    min-width: 52px;
+    width: 44px;
+    min-width: 44px;
   }
 
   .rulerHeaderCorner {
@@ -815,6 +1010,21 @@
     top: 2px !important;
     bottom: 2px !important;
     height: 24px !important;
+  }
+
+  .trimHandleLeft,
+  .trimHandleRight {
+    width: 18px;
+  }
+
+  .playheadHead {
+    width: 22px;
+    height: 26px;
+    left: -10px;
+  }
+
+  .playheadNeedle {
+    width: 2.5px;
   }
 
   .trackHeaderInfo {
