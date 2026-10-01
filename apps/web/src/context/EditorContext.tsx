@@ -1917,22 +1917,59 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setIsLoading(true, `Importando "${file.name}" para a memória (5%)...`);
 
       try {
-        const blobUrl = await preloadDriveVideo({
-          fileId: file.id,
-          streamUrl,
-          token: activeToken,
-          onProgress: (pct) => {
-            setIsLoading(true, `Importando "${file.name}" para a memória (${pct}%)...`);
-            setProject((prev) => ({
-              ...prev,
-              assets: prev.assets.map((a) =>
-                a.id === assetId
-                  ? { ...a, preloadProgress: pct, status: pct >= 100 ? 'ready' : 'importing' }
-                  : a
-              ),
-            }));
-          },
-        });
+        let blobUrl: string;
+
+        try {
+          blobUrl = await preloadDriveVideo({
+            fileId: file.id,
+            streamUrl,
+            token: activeToken,
+            onProgress: (pct) => {
+              setIsLoading(true, `Importando "${file.name}" para a memória (${pct}%)...`);
+              setProject((prev) => ({
+                ...prev,
+                assets: prev.assets.map((a) =>
+                  a.id === assetId
+                    ? { ...a, preloadProgress: pct, status: pct >= 100 ? 'ready' : 'importing' }
+                    : a
+                ),
+              }));
+            },
+          });
+        } catch (initialErr: any) {
+          const isAuthErr =
+            initialErr?.message?.includes('expirada') ||
+            initialErr?.message?.includes('401') ||
+            initialErr?.message?.includes('autenticação');
+
+          if (isAuthErr) {
+            console.warn('[Import] Sessão expirada durante importação, tentando renovar token do Google...');
+            const freshToken = await refreshGoogleToken(false);
+            if (freshToken) {
+              const freshStreamUrl = getDriveStreamUrl(file.id, freshToken);
+              blobUrl = await preloadDriveVideo({
+                fileId: file.id,
+                streamUrl: freshStreamUrl,
+                token: freshToken,
+                onProgress: (pct) => {
+                  setIsLoading(true, `Importando "${file.name}" para a memória (${pct}%)...`);
+                  setProject((prev) => ({
+                    ...prev,
+                    assets: prev.assets.map((a) =>
+                      a.id === assetId
+                        ? { ...a, preloadProgress: pct, status: pct >= 100 ? 'ready' : 'importing' }
+                        : a
+                    ),
+                  }));
+                },
+              });
+            } else {
+              throw initialErr;
+            }
+          } else {
+            throw initialErr;
+          }
+        }
 
         // 3. Download 100% concluído em memória (Blob local)
         const readyAsset: MediaAsset = {
@@ -1962,11 +1999,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ...prev,
           assets: prev.assets.filter((a) => a.id !== assetId),
         }));
-        alert(`Falha ao importar vídeo para a memória: ${err?.message || 'Erro de conexão'}`);
+        console.error('Falha ao importar vídeo do Drive para a memória:', err);
+        alert(`Falha ao importar vídeo para a memória: ${err?.message || 'Erro de conexão ou formato no Google Drive.'}`);
         return null;
       }
     },
-    [googleAccessToken, addAsset, setIsLoading, addClipToTrack]
+    [googleAccessToken, addAsset, setIsLoading, addClipToTrack, refreshGoogleToken]
   );
 
   // Remove asset from project library (optionally removing associated clips)
