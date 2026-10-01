@@ -378,22 +378,46 @@ export async function preloadDriveVideo({
 
       onProgress?.(5);
 
-      const targetUrl = streamUrl.includes('token=') || !activeToken
+      const proxyUrl = streamUrl.includes('token=') || !activeToken
         ? streamUrl
         : `${streamUrl}${streamUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(activeToken)}`;
 
-      // 1. Tenta download fatiado via Range Requests (resiliente para mobile)
-      let downloadedResult = await downloadViaRangeChunks(
-        targetUrl,
-        fetchHeaders,
-        controller.signal,
-        onProgress
-      );
+      // 1. Tenta download 100% direto do Google Drive (Zero consumo de Vercel Edge / Zero CPU)
+      let downloadedResult: { blob: Blob; mimeType: string } | null = null;
 
-      // 2. Se Range não estava disponível ou falhou, usa fallback contínuo
+      if (activeToken && activeToken.length > 10) {
+        const directGoogleUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+        try {
+          console.log('[DriveCache] Tentando download 100% direto do Google Drive (sem passar pela Vercel)...');
+          downloadedResult = await downloadViaRangeChunks(
+            directGoogleUrl,
+            fetchHeaders,
+            controller.signal,
+            onProgress
+          );
+          if (downloadedResult) {
+            console.log('[DriveCache] Sucesso no download 100% direto do Google Drive! Nenhuma Edge Function consumida.');
+          }
+        } catch (directErr: any) {
+          console.warn('[DriveCache] Download direto falhou ou bloqueado por CORS. Usando proxy:', directErr?.message);
+          downloadedResult = null;
+        }
+      }
+
+      // 2. Se o download direto não foi possível, usa o proxy com Range Chunks
+      if (!downloadedResult) {
+        downloadedResult = await downloadViaRangeChunks(
+          proxyUrl,
+          fetchHeaders,
+          controller.signal,
+          onProgress
+        );
+      }
+
+      // 3. Se Range não estava disponível ou falhou, usa fallback contínuo
       if (!downloadedResult) {
         onProgress?.(10);
-        const response = await fetch(targetUrl, {
+        const response = await fetch(proxyUrl, {
           headers: fetchHeaders,
           signal: controller.signal,
         });
