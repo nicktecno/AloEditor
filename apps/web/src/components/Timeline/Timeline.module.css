@@ -814,11 +814,14 @@
   position: absolute;
   top: 0;
   bottom: 0;
+  left: 0;
   width: 2px;
   background-color: var(--playhead-color);
   box-shadow: var(--playhead-glow);
   z-index: 25;
   pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
 }
 
 .playheadHead {

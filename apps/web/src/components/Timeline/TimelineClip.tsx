@@ -12,7 +12,7 @@ interface TimelineClipProps {
   clip: ITimelineClip;
 }
 
-export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
+export const TimelineClipComponent: React.FC<TimelineClipProps> = ({ clip }) => {
   const {
     project,
     zoom,
@@ -20,7 +20,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     selectClip,
     updateClip,
     commitHistory,
-    currentTime,
+    getCurrentTime,
     isSnappingEnabled,
     setSnapGuideTime,
     googleAccessToken,
@@ -95,7 +95,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     initialStartsRef.current = starts;
 
     // Collect candidate snap points: 0, playhead, and edges of UNSELECTED clips
-    const snapCandidates: number[] = [0, currentTime];
+    const snapCandidates: number[] = [0, getCurrentTime()];
     project.clips.forEach((c) => {
       if (!activeSelectedIds.includes(c.id)) {
         snapCandidates.push(c.startInTimeline);
@@ -242,14 +242,15 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
       let newTrimStart = Math.max(0, initialTrimStart + clampedDelta * speed);
 
       // Snap to playhead
-      if (isSnappingEnabled && Math.abs(newStart - currentTime) <= 20 / zoom) {
-        const snapDelta = currentTime - initialStart;
+      const curTime = getCurrentTime();
+      if (isSnappingEnabled && Math.abs(newStart - curTime) <= 20 / zoom) {
+        const snapDelta = curTime - initialStart;
         if (snapDelta >= minDelta && snapDelta <= maxDelta) {
-          newStart = currentTime;
+          newStart = curTime;
           clampedDelta = snapDelta;
           newDuration = Math.max(0.2, initialDuration - snapDelta);
           newTrimStart = Math.max(0, initialTrimStart + snapDelta * speed);
-          setSnapGuideTime(currentTime);
+          setSnapGuideTime(curTime);
         }
       } else {
         setSnapGuideTime(null);
@@ -344,11 +345,12 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
       let newDuration = Math.min(maxAllowedDuration, Math.max(0.2, initialDuration + deltaTime));
 
       const targetEnd = clip.startInTimeline + newDuration;
-      if (isSnappingEnabled && Math.abs(targetEnd - currentTime) <= 20 / zoom) {
-        const candidateDuration = currentTime - clip.startInTimeline;
+      const curTime = getCurrentTime();
+      if (isSnappingEnabled && Math.abs(targetEnd - curTime) <= 20 / zoom) {
+        const candidateDuration = curTime - clip.startInTimeline;
         if (candidateDuration >= 0.2 && candidateDuration <= maxAllowedDuration) {
           newDuration = candidateDuration;
-          setSnapGuideTime(currentTime);
+          setSnapGuideTime(curTime);
         } else {
           setSnapGuideTime(null);
         }
@@ -637,3 +639,5 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({ clip }) => {
     </div>
   );
 };
+
+export const TimelineClip = React.memo(TimelineClipComponent);

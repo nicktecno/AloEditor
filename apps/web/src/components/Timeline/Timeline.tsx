@@ -776,10 +776,10 @@ export const Timeline: React.FC = () => {
               </div>
             )}
 
-            {/* Playhead Needle (Across all tracks) */}
+            {/* Playhead Needle (Across all tracks - Acelerado por GPU) */}
             <div
               className={styles.playheadNeedle}
-              style={{ left: `${playheadLeft}px` }}
+              style={{ transform: `translate3d(${playheadLeft}px, 0, 0)` }}
             >
               <div
                 className={styles.playheadHead}

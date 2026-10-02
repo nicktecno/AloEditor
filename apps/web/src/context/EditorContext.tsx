@@ -100,6 +100,7 @@ interface EditorContextType {
   openGooglePicker: () => void;
 
   // Actions
+  getCurrentTime: () => number;
   setCurrentTime: (time: number) => void;
   setIsPlaying: (playing: boolean) => void;
   togglePlay: () => void;
@@ -1135,6 +1136,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     currentTimeRef.current = currentTime;
   }, [currentTime]);
 
+  // Obter o tempo atual em segundos com precisão atômica sem disparar re-render de componentes
+  const getCurrentTime = useCallback(() => currentTimeRef.current, []);
+
   // Set current time safely
   const setCurrentTime = useCallback((time: number) => {
     const clamped = Math.max(0, Math.min(project.duration, time));
@@ -1147,7 +1151,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setIsPlaying((prev) => !prev);
   }, []);
 
-  // Playback loop
+  // Playback loop otimizado: só avança o tempo de software se não houver um elemento <video> ativo
+  // guiando a reprodução através do decodificador de hardware (GPU)
   useEffect(() => {
     if (!isPlaying) {
       if (animationFrameRef.current) {
@@ -1160,18 +1165,29 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const loop = (time: number) => {
       const rawDelta = (time - lastTimeRef.current) / 1000;
-      // Clamp delta to at most 0.08s (80ms) to avoid large time jumps on frame drops or throttling
+      // Clamp delta para evitar saltos bruscos em quedas de quadros
       const delta = Math.min(0.08, Math.max(0, rawDelta));
       lastTimeRef.current = time;
 
       const curTime = currentTimeRef.current;
-      const nextTime = curTime + delta;
-      if (nextTime >= projectRef.current.duration) {
-        setIsPlaying(false);
-        setCurrentTime(0);
-        return;
-      } else {
-        setCurrentTime(nextTime);
+
+      // Se há clipe de vídeo ativo nesta posição, o hardware decoder em PlayerPreview é a fonte da verdade
+      const hasActiveVideo = projectRef.current.clips.some(
+        (c) =>
+          (c.trackId === 'track_video_main' || c.type === 'video') &&
+          curTime >= c.startInTimeline &&
+          curTime < c.startInTimeline + c.duration
+      );
+
+      if (!hasActiveVideo) {
+        const nextTime = curTime + delta;
+        if (nextTime >= projectRef.current.duration) {
+          setIsPlaying(false);
+          setCurrentTime(0);
+          return;
+        } else {
+          setCurrentTime(nextTime);
+        }
       }
 
       animationFrameRef.current = requestAnimationFrame(loop);
@@ -2696,6 +2712,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         refreshGoogleToken,
         openGooglePicker,
 
+        getCurrentTime,
         setCurrentTime,
         setIsPlaying,
         togglePlay,

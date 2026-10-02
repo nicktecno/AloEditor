@@ -9,7 +9,7 @@ interface TimelineRulerProps {
   totalWidth?: number;
 }
 
-export const TimelineRuler: React.FC<TimelineRulerProps> = ({ totalDuration, totalWidth }) => {
+export const TimelineRulerComponent: React.FC<TimelineRulerProps> = ({ totalDuration, totalWidth }) => {
   const { zoom, setCurrentTime } = useEditor();
   const rulerRef = useRef<HTMLDivElement | null>(null);
 
@@ -137,3 +137,5 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({ totalDuration, tot
     </div>
   );
 };
+
+export const TimelineRuler = React.memo(TimelineRulerComponent);

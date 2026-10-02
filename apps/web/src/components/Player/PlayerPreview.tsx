@@ -396,6 +396,18 @@ export const PlayerPreview: React.FC = () => {
     let videoFrameCallbackId: number | null = null;
     const vid = mainVideoRef.current;
 
+    // Detecta se é dispositivo móvel ou computador com baixa memória (<= 4GB RAM ou <= 4 cores)
+    const isMobileOrLowEnd =
+      typeof navigator !== 'undefined' &&
+      (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+        (typeof (navigator as any).deviceMemory === 'number' && (navigator as any).deviceMemory <= 4) ||
+        (typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4));
+
+    // Em dispositivos limitados, atualiza o state do React a 30fps (33ms).
+    // O decodificador da GPU roda o vídeo a 60fps livre, e a CPU economiza 50% de re-renders!
+    const minUpdateInterval = isMobileOrLowEnd ? 33 : 16;
+    let lastTimeUpdate = 0;
+
     const onFrame = () => {
       if (vid && !vid.paused && vid.readyState >= 2) {
         const vTime = vid.currentTime;
@@ -406,8 +418,12 @@ export const PlayerPreview: React.FC = () => {
           return;
         }
 
-        isVideoDrivingTimelineRef.current = true;
-        setCurrentTime(timelineTime);
+        const now = performance.now();
+        if (now - lastTimeUpdate >= minUpdateInterval) {
+          lastTimeUpdate = now;
+          isVideoDrivingTimelineRef.current = true;
+          setCurrentTime(timelineTime);
+        }
       }
 
       if ('requestVideoFrameCallback' in vid && typeof (vid as any).requestVideoFrameCallback === 'function') {
@@ -905,7 +921,9 @@ export const PlayerPreview: React.FC = () => {
                 className={styles.videoLayer}
                 playsInline
                 {...({ 'webkit-playsinline': 'true', 'x5-playsinline': 'true' } as any)}
-                preload="metadata"
+                preload={isPlaying ? 'auto' : 'metadata'}
+                disablePictureInPicture
+                disableRemotePlayback
                 poster={mainAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
                 muted={activeMainClip.isMuted}
                 onWaiting={handleWaiting}
@@ -1051,7 +1069,9 @@ export const PlayerPreview: React.FC = () => {
                 src={overlayAsset.proxyUrl || overlayAsset.url}
                 playsInline
                 {...({ 'webkit-playsinline': 'true', 'x5-playsinline': 'true' } as any)}
-                preload="metadata"
+                preload={isPlaying ? 'auto' : 'metadata'}
+                disablePictureInPicture
+                disableRemotePlayback
                 poster={overlayAsset.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
                 muted={activeOverlayClip.isMuted}
                 onWaiting={handleWaiting}

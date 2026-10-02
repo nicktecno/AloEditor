@@ -24,7 +24,7 @@ interface TimelineWaveformProps {
   colorScheme?: 'video' | 'audio';
 }
 
-export const TimelineWaveform: React.FC<TimelineWaveformProps> = ({
+export const TimelineWaveformComponent: React.FC<TimelineWaveformProps> = ({
   clip,
   assetUrl,
   assetDuration,
@@ -298,3 +298,6 @@ export const TimelineWaveform: React.FC<TimelineWaveformProps> = ({
     </div>
   );
 };
+
+export const TimelineWaveform = React.memo(TimelineWaveformComponent);
+
