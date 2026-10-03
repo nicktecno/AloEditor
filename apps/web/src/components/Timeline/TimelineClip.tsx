@@ -1,10 +1,15 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useEditor } from '@/context/EditorContext';
 import { TimelineClip as ITimelineClip } from '@/types/editor';
 import { Film, Type, Music, Layers, VolumeX, Volume2, Cloud } from 'lucide-react';
-import { GENERIC_VIDEO_THUMBNAIL, handleThumbnailError } from '@/utils/thumbnailGenerator';
+import {
+  GENERIC_VIDEO_THUMBNAIL,
+  handleThumbnailError,
+  getVideoFilmstripFrames,
+  getFilmstripFramesSync,
+} from '@/utils/thumbnailGenerator';
 import { TimelineWaveform } from './TimelineWaveform';
 import styles from './Timeline.module.css';
 
@@ -41,14 +46,38 @@ export const TimelineClipComponent: React.FC<TimelineClipProps> = ({ clip }) => 
   const initialStartsRef = useRef<{ [clipId: string]: number }>({});
 
   // Theme class by clip type and track
+  const isAudio = clip.type === 'audio';
+  const isText = clip.type === 'text';
   const isOverlay = clip.trackId === 'track_video_overlay';
+  const isSlim = isAudio || isText || isOverlay;
+
   const themeClass = isOverlay
     ? styles.clipOverlay
     : clip.type === 'video'
     ? styles.clipVideo
-    : clip.type === 'audio'
+    : isAudio
     ? styles.clipAudio
     : styles.clipText;
+
+  // Filmstrip frames calculation for video clips (multiple frames displayed across clip width)
+  const frameCount = Math.max(1, Math.ceil(widthPos / 54));
+  const [filmstripFrames, setFilmstripFrames] = useState<string[]>(() =>
+    getFilmstripFramesSync(asset?.proxyUrl || asset?.url || '', frameCount, asset?.thumbnailUrl)
+  );
+
+  useEffect(() => {
+    if (clip.type !== 'video' || (!asset?.url && !asset?.proxyUrl)) return;
+    let isMounted = true;
+    const mediaSource = asset.proxyUrl || asset.url;
+    getVideoFilmstripFrames(mediaSource, Math.min(12, Math.max(frameCount, 4)), asset.duration).then((frames) => {
+      if (isMounted && frames && frames.length > 0) {
+        setFilmstripFrames(frames);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [asset?.url, asset?.proxyUrl, asset?.duration, frameCount, clip.type]);
 
   // Drag to move along track with Multi-Select & Magnetism
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -417,7 +446,7 @@ export const TimelineClipComponent: React.FC<TimelineClipProps> = ({ clip }) => 
 
   return (
     <div
-      className={`${styles.clipItem} ${themeClass} ${clip.type === 'audio' ? styles.clipItemAudio : ''} ${isSelected ? styles.clipItemSelected : ''} ${isDragging ? styles.clipDragging : ''}`}
+      className={`${styles.clipItem} ${themeClass} ${isAudio ? styles.clipItemAudio : isSlim ? styles.clipItemSlim : ''} ${isSelected ? styles.clipItemSelected : ''} ${isDragging ? styles.clipDragging : ''}`}
       style={{
         left: `${leftPos}px`,
         width: `${widthPos}px`,
@@ -459,9 +488,6 @@ export const TimelineClipComponent: React.FC<TimelineClipProps> = ({ clip }) => 
         </div>
       )}
 
-      {/* Subtle waveform graphic for audio clips */}
-      {clip.type === 'audio' && <div className={styles.clipAudioWaveform} />}
-
       {/* Left Trim Handle */}
       {widthPos >= 20 && (
         <div
@@ -492,60 +518,89 @@ export const TimelineClipComponent: React.FC<TimelineClipProps> = ({ clip }) => 
       )}
 
       {/* Clip Content & Media Display */}
-      {clip.type === 'video' ? (
-        <div className={styles.videoClipContainer}>
-          {/* Top Row: Video Thumbnail preview & Clip Name */}
-          <div className={styles.videoTopRow}>
-            <div className={styles.clipThumbPreview} title={clip.name}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={asset?.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL}
-                alt=""
-                className={styles.clipThumbImg}
-                onError={handleThumbnailError}
-              />
+      {isOverlay ? (
+        /* Overlay Track (B-Roll) Slim Media Bar with Filmstrip */
+        <div className={styles.videoFilmstripSection} style={{ height: '100%', borderBottom: 'none' }}>
+          <div className={styles.filmstripContainer}>
+            {Array.from({ length: frameCount }).map((_, idx) => {
+              const frameIdx = filmstripFrames.length > 0
+                ? Math.min(filmstripFrames.length - 1, Math.floor((idx / frameCount) * filmstripFrames.length))
+                : 0;
+              const frameSrc = filmstripFrames[frameIdx] || asset?.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL;
+              return (
+                <div key={idx} className={styles.filmstripFrame}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={frameSrc} alt="" className={styles.filmstripImg} onError={handleThumbnailError} />
+                </div>
+              );
+            })}
+          </div>
+          <div className={styles.videoOverlayBadge}>
+            <div className={styles.videoBadgePill} title={clip.name} style={{ background: 'rgba(30, 20, 10, 0.85)', borderColor: 'rgba(245, 158, 11, 0.4)' }}>
+              <Layers size={11} color="#fbbf24" style={{ flexShrink: 0 }} />
+              {widthPos >= 40 && <span className={styles.videoBadgeName} style={{ color: '#fef3c7' }}>{clip.name}</span>}
+              {widthPos >= 30 && <span className={styles.videoBadgeDuration} style={{ color: '#fde68a' }}>{clip.duration.toFixed(1)}s</span>}
             </div>
-            <Film size={12} className={styles.videoClipIcon} />
-
-            {clip.isMuted && (
-              <span title="Áudio silenciado" style={{ display: 'inline-flex', alignItems: 'center' }}>
-                <VolumeX size={12} color="#f43f5e" style={{ flexShrink: 0 }} />
-              </span>
+            {widthPos >= 70 && clip.transitionIn && clip.transitionIn.type !== 'none' && (
+              <span className={styles.clipTransitionBadge}>⚡ {clip.transitionIn.type}</span>
             )}
-
-            {widthPos >= 50 && clip.transitionIn && clip.transitionIn.type !== 'none' && (
-              <span className={styles.clipTransitionBadge}>
-                ⚡ {clip.transitionIn.type}
-              </span>
-            )}
-
-            {widthPos >= 40 && (
-              <span className={styles.clipName} title={clip.name}>
-                {clip.name}
-              </span>
-            )}
-
-            {widthPos >= 50 && clip.effect && clip.effect !== 'none' && (
+            {widthPos >= 70 && clip.effect && clip.effect !== 'none' && (
               <span className={styles.clipFxBadge}>FX</span>
             )}
-
-            {widthPos >= 50 && clip.transitionOut && clip.transitionOut.type !== 'none' && (
-              <span className={styles.clipTransitionBadge}>
-                {clip.transitionOut.type} ⚡
-              </span>
+            {widthPos >= 70 && clip.transitionOut && clip.transitionOut.type !== 'none' && (
+              <span className={styles.clipTransitionBadge}>{clip.transitionOut.type} ⚡</span>
             )}
+          </div>
+        </div>
+      ) : clip.type === 'video' ? (
+        /* Main Video Track: CapCut Filmstrip + Bottom Real Audio Waveform */
+        <div className={styles.videoClipContainer}>
+          {/* Top Section: Video Filmstrip with multiple keyframes */}
+          <div className={styles.videoFilmstripSection}>
+            <div className={styles.filmstripContainer}>
+              {Array.from({ length: frameCount }).map((_, idx) => {
+                const frameIdx = filmstripFrames.length > 0
+                  ? Math.min(filmstripFrames.length - 1, Math.floor((idx / frameCount) * filmstripFrames.length))
+                  : 0;
+                const frameSrc = filmstripFrames[frameIdx] || asset?.thumbnailUrl || GENERIC_VIDEO_THUMBNAIL;
+                return (
+                  <div key={idx} className={styles.filmstripFrame}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={frameSrc} alt="" className={styles.filmstripImg} onError={handleThumbnailError} />
+                  </div>
+                );
+              })}
+            </div>
 
-            {widthPos >= 30 && <span className={styles.clipDuration}>{clip.duration.toFixed(1)}s</span>}
+            {/* Overlaid Title & Meta Badge */}
+            <div className={styles.videoOverlayBadge}>
+              <div className={styles.videoBadgePill} title={clip.name}>
+                <Film size={11} className={styles.videoClipIcon} />
+                {widthPos >= 40 && <span className={styles.videoBadgeName}>{clip.name}</span>}
+                {widthPos >= 30 && <span className={styles.videoBadgeDuration}>{clip.duration.toFixed(1)}s</span>}
+                {clip.isMuted && <VolumeX size={11} color="#f43f5e" style={{ flexShrink: 0 }} />}
+              </div>
+
+              {widthPos >= 70 && clip.transitionIn && clip.transitionIn.type !== 'none' && (
+                <span className={styles.clipTransitionBadge}>⚡ {clip.transitionIn.type}</span>
+              )}
+              {widthPos >= 70 && clip.effect && clip.effect !== 'none' && (
+                <span className={styles.clipFxBadge}>FX</span>
+              )}
+              {widthPos >= 70 && clip.transitionOut && clip.transitionOut.type !== 'none' && (
+                <span className={styles.clipTransitionBadge}>{clip.transitionOut.type} ⚡</span>
+              )}
+            </div>
           </div>
 
-          {/* Bottom Row: CapCut Audio Waveform & Draggable Volume Envelope Line */}
+          {/* Bottom Section: CapCut Audio Waveform & Draggable Volume Envelope Line */}
           <div className={styles.clipVideoAudioSection}>
             <TimelineWaveform
               clip={clip}
               assetUrl={asset?.proxyUrl || asset?.url}
               assetDuration={asset?.duration}
               width={widthPos}
-              height={32}
+              height={26}
               colorScheme="video"
               onVolumeChange={(newVol) => updateClip(clip.id, { volume: newVol })}
               onVolumeCommit={() => commitHistory()}
@@ -593,12 +648,9 @@ export const TimelineClipComponent: React.FC<TimelineClipProps> = ({ clip }) => 
           />
         </div>
       ) : (
+        /* Text Track Clip (Slim 36px) */
         <div className={styles.clipBody}>
-          {isOverlay ? (
-            <Layers size={14} color="#fbbf24" style={{ flexShrink: 0 }} />
-          ) : (
-            <Type size={14} style={{ flexShrink: 0 }} />
-          )}
+          <Type size={13} style={{ flexShrink: 0 }} />
 
           {widthPos >= 50 && clip.transitionIn && clip.transitionIn.type !== 'none' && (
             <span className={styles.clipTransitionBadge}>

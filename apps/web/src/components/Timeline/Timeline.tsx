@@ -39,6 +39,7 @@ export const Timeline: React.FC = () => {
     project,
     currentTime,
     setCurrentTime,
+    isPlaying,
     zoom,
     setZoom,
     zoomIn,
@@ -73,6 +74,35 @@ export const Timeline: React.FC = () => {
   const trackHeadersRef = useRef<HTMLDivElement | null>(null);
   const isSyncingScrollRef = useRef<boolean>(false);
   const zoomRef = useRef<number>(zoom);
+  zoomRef.current = zoom;
+
+  // Auto-follow: Manter a agulha vermelha visível na timeline durante a reprodução ou navegação (especialmente com zoom)
+  React.useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const playheadX = currentTime * zoom;
+    const viewLeft = container.scrollLeft;
+    const viewWidth = container.clientWidth;
+    const viewRight = viewLeft + viewWidth;
+
+    if (isPlaying) {
+      // Quando a agulha vermelha avança e alcança 80% da tela visível, rola a visualização suavemente
+      if (playheadX > viewRight - 80) {
+        container.scrollLeft = Math.max(0, playheadX - viewWidth * 0.2);
+      } else if (playheadX < viewLeft) {
+        container.scrollLeft = Math.max(0, playheadX - viewWidth * 0.2);
+      }
+    } else {
+      // Durante navegação manual com setas ou saltos: mantém a agulha no enquadramento visível
+      if (playheadX > viewRight - 40) {
+        container.scrollLeft = playheadX - viewWidth + 80;
+      } else if (playheadX < viewLeft + 30) {
+        container.scrollLeft = Math.max(0, playheadX - 60);
+      }
+    }
+  }, [currentTime, zoom, isPlaying]);
+
   zoomRef.current = zoom;
 
   // Dynamic timeline height (default 270px, resizable from 180px to 480px)
@@ -710,38 +740,48 @@ export const Timeline: React.FC = () => {
             <span>Trilhas</span>
           </div>
 
-          {project.tracks.map((track) => (
-            <div
-              key={track.id}
-              className={`${styles.trackHeaderItem} ${track.type === 'audio' ? styles.trackHeaderItemAudio : ''}`}
-            >
-              <div className={styles.trackHeaderInfo} title={track.name}>
-                {getTrackIcon(track.type, track.id)}
-                <span>{track.name}</span>
-              </div>
+          {project.tracks.map((track) => {
+            const isAudio = track.type === 'audio';
+            const isOverlay = track.id === 'track_video_overlay';
+            const isText = track.type === 'text';
+            const isSlim = isAudio || isOverlay || isText;
 
-              <div className={styles.trackHeaderActions}>
-                <button
-                  className={`${styles.trackActionBtn} ${track.isMuted ? styles.trackActionBtnActive : ''}`}
-                  title={track.isMuted ? 'Desmutar' : 'Mutar'}
-                >
-                  {track.isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                </button>
-                <button
-                  className={`${styles.trackActionBtn} ${track.isLocked ? styles.trackActionBtnActive : ''}`}
-                  title={track.isLocked ? 'Desbloquear' : 'Bloquear'}
-                >
-                  {track.isLocked ? <Lock size={14} /> : <Unlock size={14} />}
-                </button>
-                <button
-                  className={`${styles.trackActionBtn} ${track.isHidden ? styles.trackActionBtnActive : ''}`}
-                  title={track.isHidden ? 'Mostrar' : 'Ocultar'}
-                >
-                  {track.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
+            let headerClass = styles.trackHeaderItem;
+            if (isAudio) headerClass += ` ${styles.trackHeaderItemAudio}`;
+            else if (isOverlay) headerClass += ` ${styles.trackHeaderItemOverlay}`;
+            else if (isText) headerClass += ` ${styles.trackHeaderItemText}`;
+            else if (isSlim) headerClass += ` ${styles.trackHeaderItemSlim}`;
+
+            return (
+              <div key={track.id} className={headerClass}>
+                <div className={styles.trackHeaderInfo} title={track.name}>
+                  {getTrackIcon(track.type, track.id)}
+                  <span>{track.name}</span>
+                </div>
+
+                <div className={styles.trackHeaderActions}>
+                  <button
+                    className={`${styles.trackActionBtn} ${track.isMuted ? styles.trackActionBtnActive : ''}`}
+                    title={track.isMuted ? 'Desmutar' : 'Mutar'}
+                  >
+                    {track.isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                  </button>
+                  <button
+                    className={`${styles.trackActionBtn} ${track.isLocked ? styles.trackActionBtnActive : ''}`}
+                    title={track.isLocked ? 'Desbloquear' : 'Bloquear'}
+                  >
+                    {track.isLocked ? <Lock size={14} /> : <Unlock size={14} />}
+                  </button>
+                  <button
+                    className={`${styles.trackActionBtn} ${track.isHidden ? styles.trackActionBtnActive : ''}`}
+                    title={track.isHidden ? 'Mostrar' : 'Ocultar'}
+                  >
+                    {track.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Scrollable Tracks Area */}
@@ -791,10 +831,21 @@ export const Timeline: React.FC = () => {
             {/* Track Lanes */}
             {project.tracks.map((track) => {
               const trackClips = project.clips.filter((c) => c.trackId === track.id);
+              const isAudio = track.type === 'audio';
+              const isOverlay = track.id === 'track_video_overlay';
+              const isText = track.type === 'text';
+              const isSlim = isAudio || isOverlay || isText;
+
+              let laneClass = styles.trackLane;
+              if (isAudio) laneClass += ` ${styles.trackLaneAudio}`;
+              else if (isOverlay) laneClass += ` ${styles.trackLaneOverlay}`;
+              else if (isText) laneClass += ` ${styles.trackLaneText}`;
+              else if (isSlim) laneClass += ` ${styles.trackLaneSlim}`;
+
               return (
                 <div
                   key={track.id}
-                  className={`${styles.trackLane} ${track.type === 'audio' ? styles.trackLaneAudio : ''}`}
+                  className={laneClass}
                   onDragOver={handleTrackDragOver}
                   onDragLeave={handleTrackDragLeave}
                   onDrop={(e) => handleTrackDrop(e, track.id)}

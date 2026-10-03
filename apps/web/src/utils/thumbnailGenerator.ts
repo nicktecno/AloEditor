@@ -220,3 +220,152 @@ export async function getMediaDuration(
     el.src = mediaUrl;
   });
 }
+
+// Filmstrip cache: key -> array of frame data URLs
+const filmstripCache = new Map<string, string[]>();
+const filmstripLoadingSet = new Set<string>();
+
+/**
+ * Returns cached filmstrip frames synchronously or fills with fallback thumbnail.
+ */
+export function getFilmstripFramesSync(
+  sourceUrl: string,
+  count: number,
+  fallbackUrl?: string
+): string[] {
+  const fallback = fallbackUrl || GENERIC_VIDEO_THUMBNAIL;
+  if (!sourceUrl) {
+    return Array(Math.max(1, count)).fill(fallback);
+  }
+  const cached = filmstripCache.get(sourceUrl);
+  if (cached && cached.length > 0) {
+    const res: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const idx = Math.min(cached.length - 1, Math.floor((i / count) * cached.length));
+      res.push(cached[idx]);
+    }
+    return res;
+  }
+  return Array(Math.max(1, count)).fill(fallback);
+}
+
+/**
+ * Extracts a sequence of keyframe thumbnails across the video to display a filmstrip in the timeline.
+ */
+export async function getVideoFilmstripFrames(
+  source: File | Blob | string,
+  count: number = 8,
+  totalDuration?: number
+): Promise<string[]> {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Array(count).fill(GENERIC_VIDEO_THUMBNAIL);
+  }
+
+  const cacheKey = typeof source === 'string' ? source : (source as any).name || 'blob_video';
+  if (filmstripCache.has(cacheKey)) {
+    return filmstripCache.get(cacheKey)!;
+  }
+
+  if (filmstripLoadingSet.has(cacheKey)) {
+    return Array(count).fill(GENERIC_VIDEO_THUMBNAIL);
+  }
+
+  filmstripLoadingSet.add(cacheKey);
+
+  return new Promise((resolve) => {
+    let objectUrlToRevoke: string | null = null;
+    let mediaUrl: string;
+
+    if (typeof source === 'string') {
+      mediaUrl = source;
+    } else {
+      objectUrlToRevoke = URL.createObjectURL(source);
+      mediaUrl = objectUrlToRevoke;
+    }
+
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+
+    const frames: string[] = [];
+    const cleanup = () => {
+      if (objectUrlToRevoke) {
+        URL.revokeObjectURL(objectUrlToRevoke);
+        objectUrlToRevoke = null;
+      }
+      video.removeAttribute('src');
+      video.load();
+      filmstripLoadingSet.delete(cacheKey);
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      if (frames.length > 0) {
+        filmstripCache.set(cacheKey, frames);
+        resolve(frames);
+      } else {
+        resolve(Array(count).fill(GENERIC_VIDEO_THUMBNAIL));
+      }
+    }, 4500);
+
+    video.onloadedmetadata = async () => {
+      try {
+        const dur = video.duration || totalDuration || 5.0;
+        const canvas = document.createElement('canvas');
+        canvas.width = 120;
+        canvas.height = 68;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          clearTimeout(timer);
+          cleanup();
+          resolve(Array(count).fill(GENERIC_VIDEO_THUMBNAIL));
+          return;
+        }
+
+        const timestamps: number[] = [];
+        for (let i = 0; i < count; i++) {
+          const t = Math.max(0.05, Math.min(dur - 0.05, (i / Math.max(1, count - 1)) * (dur - 0.1) + 0.05));
+          timestamps.push(t);
+        }
+
+        for (const t of timestamps) {
+          await new Promise<void>((resSeek) => {
+            const onSeeked = () => {
+              video.removeEventListener('seeked', onSeeked);
+              try {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+                frames.push(dataUrl);
+              } catch {
+                frames.push(GENERIC_VIDEO_THUMBNAIL);
+              }
+              resSeek();
+            };
+            video.addEventListener('seeked', onSeeked, { once: true });
+            video.currentTime = t;
+          });
+        }
+
+        clearTimeout(timer);
+        cleanup();
+        filmstripCache.set(cacheKey, frames);
+        resolve(frames);
+      } catch {
+        clearTimeout(timer);
+        cleanup();
+        resolve(Array(count).fill(GENERIC_VIDEO_THUMBNAIL));
+      }
+    };
+
+    video.onerror = () => {
+      clearTimeout(timer);
+      cleanup();
+      resolve(Array(count).fill(GENERIC_VIDEO_THUMBNAIL));
+    };
+
+    video.src = mediaUrl;
+  });
+}
+

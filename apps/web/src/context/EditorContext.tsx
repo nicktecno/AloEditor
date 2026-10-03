@@ -1139,12 +1139,14 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Obter o tempo atual em segundos com precisão atômica sem disparar re-render de componentes
   const getCurrentTime = useCallback(() => currentTimeRef.current, []);
 
-  // Set current time safely
+  // Set current time safely (respecting the effective duration of all clips)
   const setCurrentTime = useCallback((time: number) => {
-    const clamped = Math.max(0, Math.min(project.duration, time));
+    const maxClipEnd = project.clips.reduce((max, c) => Math.max(max, c.startInTimeline + c.duration), 0);
+    const maxDur = Math.max(project.duration, maxClipEnd, 1);
+    const clamped = Math.max(0, Math.min(maxDur, time));
     currentTimeRef.current = clamped;
     setCurrentTimeState(clamped);
-  }, [project.duration]);
+  }, [project.duration, project.clips]);
 
   // Toggle play/pause
   const togglePlay = useCallback(() => {
@@ -2628,6 +2630,29 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
 
+      // Atalhos de navegação da agulha vermelha na timeline: Setas Esquerda / Direita
+      if (e.code === 'ArrowLeft' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const fps = project.settings.fps || 30;
+        const step = e.shiftKey ? 1.0 : (1 / fps);
+        const cur = currentTimeRef.current;
+        const next = Math.max(0, parseFloat((cur - step).toFixed(3)));
+        setCurrentTime(next);
+        return;
+      }
+
+      if (e.code === 'ArrowRight' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const fps = project.settings.fps || 30;
+        const step = e.shiftKey ? 1.0 : (1 / fps);
+        const cur = currentTimeRef.current;
+        const maxClipEnd = project.clips.reduce((max, c) => Math.max(max, c.startInTimeline + c.duration), 0);
+        const maxDur = Math.max(project.duration, maxClipEnd, 1);
+        const next = Math.min(maxDur, parseFloat((cur + step).toFixed(3)));
+        setCurrentTime(next);
+        return;
+      }
+
       if (e.code === 'Space') {
         e.preventDefault();
         togglePlay();
@@ -2655,7 +2680,23 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, splitClipAtPlayhead, deleteSelectedClips, selectedClipId, selectAllClips, undo, redo, duplicateClip, zoomIn, zoomOut, zoomToFit]);
+  }, [
+    togglePlay,
+    splitClipAtPlayhead,
+    deleteSelectedClips,
+    selectedClipId,
+    selectAllClips,
+    undo,
+    redo,
+    duplicateClip,
+    zoomIn,
+    zoomOut,
+    zoomToFit,
+    setCurrentTime,
+    project.settings.fps,
+    project.clips,
+    project.duration,
+  ]);
 
   return (
     <EditorContext.Provider

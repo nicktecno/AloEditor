@@ -115,19 +115,22 @@ export const TimelineWaveformComponent: React.FC<TimelineWaveformProps> = ({
 
     const isMuted = clip.isMuted || clip.volume <= 0.001;
     const effectiveVol = isMuted ? 0 : isDraggingVolume ? dragVolume : clip.volume;
+    const isAudioTrack = colorScheme === 'audio';
 
-    // Amplitude modulation with volume: 1.0 = ~65% max height, up to 92% at 1.5
-    const volumeFactor = Math.min(1.4, Math.max(0.2, effectiveVol * 0.75));
+    // Amplitude modulation with volume: 1.0 = normal, scaling naturally up to 1.5
+    const volumeFactor = Math.min(1.5, Math.max(0.1, effectiveVol));
 
     sliced.forEach((peak, i) => {
       const x = i * barTotal + 1;
       if (x + barWidth > renderWidth) return;
 
       const rawPeakHeight = Math.max(2, peak * (renderHeight - 4));
-      const peakHeight = isMuted ? 2 : Math.max(2, rawPeakHeight * volumeFactor);
+      const peakHeight = isMuted ? 2 : Math.max(2, Math.min(renderHeight - 2, rawPeakHeight * volumeFactor));
 
-      // Draw bottom-aligned or centered waveform bars
-      const y = renderHeight - peakHeight;
+      // Audio track uses centered waveform (classic soundwave); video uses bottom or centered
+      const y = isAudioTrack
+        ? Math.round((renderHeight - peakHeight) / 2)
+        : renderHeight - peakHeight;
 
       if (isMuted) {
         ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
@@ -138,18 +141,18 @@ export const TimelineWaveformComponent: React.FC<TimelineWaveformProps> = ({
         grad.addColorStop(1, '#059669'); // emerald-600
         ctx.fillStyle = grad;
       } else {
-        // CapCut Audio Track: Vibrant Emerald / Cyan
-        const grad = ctx.createLinearGradient(0, y, 0, renderHeight);
+        // CapCut Audio Track: Vibrant Sky Cyan to Emerald
+        const grad = ctx.createLinearGradient(0, y, 0, y + peakHeight);
         grad.addColorStop(0, '#38bdf8'); // sky-400
         grad.addColorStop(0.5, '#34d399'); // emerald-400
         grad.addColorStop(1, '#059669'); // emerald-600
         ctx.fillStyle = grad;
       }
 
-      // Rounded vertical bar
+      // Rounded vertical bar (fully rounded caps for soundwave dots/bars)
       const radius = 1;
       ctx.beginPath();
-      ctx.roundRect(x, y, barWidth, peakHeight, [radius, radius, 0, 0]);
+      ctx.roundRect(x, y, barWidth, peakHeight, [radius, radius, radius, radius]);
       ctx.fill();
     });
   }, [width, height, rawPeaks, clip.trimStart, clip.duration, clip.speed, clip.volume, clip.isMuted, isDraggingVolume, dragVolume, assetDuration, colorScheme]);

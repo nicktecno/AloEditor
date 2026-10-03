@@ -47,9 +47,9 @@ function pseudoRandom(seed: number): () => number {
 
 /**
  * Generates realistic audio waveform peaks with musical/speech cadence
- * (rhythmic envelopes, speech pauses, dynamic range)
+ * (words, vocal bursts, dynamic range and natural speech pauses)
  */
-export function generateProceduralPeaks(seedKey: string, count = 100): number[] {
+export function generateProceduralPeaks(seedKey: string, count = 150): number[] {
   let hash = 0;
   for (let i = 0; i < seedKey.length; i++) {
     hash = (hash << 5) - hash + seedKey.charCodeAt(i);
@@ -58,24 +58,48 @@ export function generateProceduralPeaks(seedKey: string, count = 100): number[] 
   const rnd = pseudoRandom(Math.abs(hash) || 123456);
 
   const peaks: number[] = [];
-  let currentEnergy = 0.45;
+  let inWord = true;
+  let wordLength = Math.floor(rnd() * 6) + 4;
+  let wordCounter = 0;
+  let pauseLength = Math.floor(rnd() * 3) + 2;
+  let pauseCounter = 0;
+  let wordEnergy = 0.5 + rnd() * 0.45;
 
   for (let i = 0; i < count; i++) {
-    // Envelope pattern: speech cadence / rhythm fluctuation
-    const cadence = Math.sin((i / 8) * Math.PI) * 0.25;
-    const microVariation = (rnd() - 0.5) * 0.35;
-    const burst = rnd() > 0.88 ? 0.35 : 0;
-    const pause = rnd() < 0.08 ? -0.4 : 0;
+    if (inWord) {
+      wordCounter++;
+      // Syllable peak curve
+      const syllableProg = Math.sin((wordCounter / wordLength) * Math.PI);
+      const jitter = (rnd() - 0.5) * 0.18;
+      const energy = Math.max(0.1, Math.min(0.96, wordEnergy * syllableProg + jitter));
+      peaks.push(parseFloat(energy.toFixed(3)));
 
-    currentEnergy = Math.max(0.12, Math.min(0.95, currentEnergy * 0.75 + (0.4 + cadence + microVariation + burst + pause) * 0.25));
-    peaks.push(parseFloat(currentEnergy.toFixed(3)));
+      if (wordCounter >= wordLength) {
+        inWord = false;
+        wordCounter = 0;
+        pauseLength = Math.floor(rnd() * 4) + 1;
+        pauseCounter = 0;
+      }
+    } else {
+      pauseCounter++;
+      // Natural silence/breath pause between words
+      const breathNoise = 0.02 + rnd() * 0.04;
+      peaks.push(parseFloat(breathNoise.toFixed(3)));
+
+      if (pauseCounter >= pauseLength) {
+        inWord = true;
+        pauseCounter = 0;
+        wordLength = Math.floor(rnd() * 7) + 3;
+        wordEnergy = 0.45 + rnd() * 0.5;
+      }
+    }
   }
 
   return peaks;
 }
 
 /**
- * Fetches and decodes AudioBuffer from an asset URL
+ * Fetches and decodes AudioBuffer from an asset URL (MP3, WAV, AAC, MP4, etc.)
  */
 export async function getDecodedAudioBuffer(url: string): Promise<AudioBuffer | null> {
   if (typeof window === 'undefined' || !url) return null;
@@ -101,40 +125,49 @@ export async function getDecodedAudioBuffer(url: string): Promise<AudioBuffer | 
 }
 
 /**
- * Extracts normalized peak amplitudes from an AudioBuffer
+ * Extracts normalized peak amplitudes from an AudioBuffer at high resolution (60 fps),
+ * preserving vocal dynamics, accents, and natural silence intervals.
  */
-export function extractPeaksFromBuffer(buffer: AudioBuffer, targetCount = 200): number[] {
+export function extractPeaksFromBuffer(buffer: AudioBuffer, targetCount?: number): number[] {
   const channelData = buffer.getChannelData(0);
   const totalSamples = channelData.length;
-  const blockSize = Math.floor(totalSamples / targetCount);
-  const peaks: number[] = [];
+  // High density: 60 samples per second or requested count
+  const count = targetCount && targetCount > 0
+    ? targetCount
+    : Math.max(300, Math.min(3600, Math.floor(buffer.duration * 60)));
+
+  const blockSize = Math.max(1, Math.floor(totalSamples / count));
+  const rawAmps: number[] = [];
 
   let maxPeak = 0.001;
 
-  for (let i = 0; i < targetCount; i++) {
+  for (let i = 0; i < count; i++) {
     const start = i * blockSize;
     const end = Math.min(start + blockSize, totalSamples);
     let sumSquares = 0;
     let peakInBlock = 0;
+    const step = Math.max(1, Math.floor((end - start) / 32));
 
-    for (let j = start; j < end; j += 4) {
+    for (let j = start; j < end; j += step) {
       const val = Math.abs(channelData[j]);
       if (val > peakInBlock) peakInBlock = val;
       sumSquares += val * val;
     }
 
-    const count = Math.max(1, Math.floor((end - start) / 4));
-    const rms = Math.sqrt(sumSquares / count);
-    const combined = peakInBlock * 0.7 + rms * 0.3;
+    const sampleCount = Math.max(1, Math.floor((end - start) / step));
+    const rms = Math.sqrt(sumSquares / sampleCount);
+    // Weighted combination favoring prominent voice peaks
+    const combined = peakInBlock * 0.75 + rms * 0.25;
 
     if (combined > maxPeak) maxPeak = combined;
-    peaks.push(combined);
+    rawAmps.push(combined);
   }
 
-  // Normalize between 0.1 and 0.95
-  return peaks.map((p) => {
-    const norm = p / maxPeak;
-    return parseFloat(Math.max(0.1, Math.min(0.95, norm)).toFixed(3));
+  // Dynamic expansion for voice: loud syllables pop (up to 0.98), pauses drop to 0.02
+  return rawAmps.map((p) => {
+    const norm = maxPeak > 0 ? p / maxPeak : 0;
+    const contrast = Math.pow(norm, 1.15);
+    return parseFloat(Math.max(0.02, Math.min(0.98, contrast)).toFixed(3));
   });
 }
 
@@ -143,12 +176,13 @@ export function extractPeaksFromBuffer(buffer: AudioBuffer, targetCount = 200): 
  */
 export async function getWaveformPeaks(
   assetUrl?: string,
-  sampleCount = 120,
+  sampleCount = 300,
   seedKey = 'default_media'
 ): Promise<number[]> {
-  const cacheKey = `${assetUrl || seedKey}_${sampleCount}`;
+  const cacheKey = `${assetUrl || seedKey}_highres`;
   if (peaksCache.has(cacheKey)) {
-    return peaksCache.get(cacheKey)!;
+    const cached = peaksCache.get(cacheKey)!;
+    return cached;
   }
 
   // If no asset URL, return deterministic peaks immediately
@@ -161,7 +195,7 @@ export async function getWaveformPeaks(
   try {
     const buffer = await getDecodedAudioBuffer(assetUrl);
     if (buffer) {
-      const extracted = extractPeaksFromBuffer(buffer, sampleCount);
+      const extracted = extractPeaksFromBuffer(buffer);
       peaksCache.set(cacheKey, extracted);
       return extracted;
     }
@@ -172,6 +206,7 @@ export async function getWaveformPeaks(
   peaksCache.set(cacheKey, procedural);
   return procedural;
 }
+
 
 /**
  * Slices full asset waveform peaks according to clip trim and playback speed
