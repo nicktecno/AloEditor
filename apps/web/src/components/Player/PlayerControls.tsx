@@ -185,15 +185,15 @@ export const PlayerControls: React.FC = () => {
             );
           }
 
-          const hasOptimizing = project.assets.some((a) => a.type === 'video' && a.status === 'optimizing');
-          if (hasOptimizing) {
+          const optimizingAsset = project.assets.find((a) => a.type === 'video' && a.status === 'optimizing');
+          if (optimizingAsset) {
             return (
               <div
                 className={styles.preloadBadge}
-                title="Otimizando vídeo para proxy 360p em segundo plano (ultra-leve)..."
+                title={`Otimizando vídeo para proxy 360p em segundo plano (${optimizingAsset.optimizingProgress ?? 0}%)...`}
               >
                 <div className={styles.preloadSpinner} />
-                <span>Otimizando 360p...</span>
+                <span>Otimizando 360p ({optimizingAsset.optimizingProgress ?? 0}%)</span>
               </div>
             );
           }

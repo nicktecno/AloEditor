@@ -507,9 +507,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setProject((prev) => ({
         ...prev,
         assets: prev.assets.map((a) =>
-          a.id === assetId ? { ...a, status: 'optimizing' } : a
+          a.id === assetId ? { ...a, status: 'optimizing', optimizingProgress: 5 } : a
         ),
       }));
+
+      let lastReportedPct = 0;
 
       // 3. Executa a geração em segundo plano via WebCodecs
       try {
@@ -517,6 +519,17 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           fileId,
           sourceUrl,
           duration,
+          onProgress: (pct) => {
+            if (pct - lastReportedPct >= 5 || pct >= 99) {
+              lastReportedPct = pct;
+              setProject((prev) => ({
+                ...prev,
+                assets: prev.assets.map((a) =>
+                  a.id === assetId ? { ...a, optimizingProgress: pct } : a
+                ),
+              }));
+            }
+          },
         });
 
         setProject((prev) => ({
@@ -527,6 +540,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   ...a,
                   proxyUrl: proxyUrl || a.proxyUrl || sourceUrl,
                   status: 'ready',
+                  optimizingProgress: 100,
                 }
               : a
           ),
@@ -536,7 +550,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setProject((prev) => ({
           ...prev,
           assets: prev.assets.map((a) =>
-            a.id === assetId ? { ...a, status: 'ready' } : a
+            a.id === assetId ? { ...a, status: 'ready', optimizingProgress: undefined } : a
           ),
         }));
       }

@@ -27,6 +27,7 @@ export interface MediaAsset {
   isAuthExpired?: boolean;
   proxyUrl?: string;
   preloadProgress?: number; // 0 to 100
+  optimizingProgress?: number; // 0 to 100 (proxy 360p transcoding)
   loadedBytes?: number;
   status?: 'ready' | 'importing' | 'optimizing' | 'error';
 }

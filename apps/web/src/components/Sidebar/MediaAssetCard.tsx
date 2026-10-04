@@ -242,6 +242,32 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
           </div>
         )}
 
+        {/* Barra de Progresso de Otimização 360p */}
+        {asset.status === 'optimizing' && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '4px',
+              background: 'rgba(0, 0, 0, 0.6)',
+              zIndex: 8,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${Math.max(6, asset.optimizingProgress ?? 5)}%`,
+                background: 'linear-gradient(90deg, #f59e0b, #06b6d4)',
+                transition: 'width 0.25s ease-out',
+                boxShadow: '0 0 8px rgba(245, 158, 11, 0.8)',
+              }}
+            />
+          </div>
+        )}
+
         {asset.isDrive ? (
           <div
             className={
@@ -257,7 +283,7 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
               asset.isAuthExpired
                 ? 'Sessão do Google Drive expirada. Reconecte para reproduzir.'
                 : asset.status === 'optimizing'
-                ? 'Otimizando para 360p em segundo plano (ultra-leve)...'
+                ? `Otimizando para proxy 360p (${asset.optimizingProgress ?? 0}%)...`
                 : asset.proxyUrl && asset.proxyUrl !== asset.url
                 ? 'Proxy 360p ativo (ultra-leve para edição e seek)'
                 : asset.proxyUrl
@@ -280,7 +306,7 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
                 : isImporting
                 ? `BAIXANDO ${asset.preloadProgress ?? 0}%`
                 : asset.status === 'optimizing'
-                ? 'OTIMIZANDO 360p'
+                ? `360p ${asset.optimizingProgress ?? 0}%`
                 : asset.proxyUrl && asset.proxyUrl !== asset.url
                 ? '360p PROXY'
                 : asset.proxyUrl
@@ -289,9 +315,9 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
             </span>
           </div>
         ) : asset.status === 'optimizing' ? (
-          <div className={styles.badgeOptimizing} title="Otimizando para 360p em segundo plano...">
+          <div className={styles.badgeOptimizing} title={`Otimizando para proxy 360p (${asset.optimizingProgress ?? 0}%)...`}>
             <Sparkles size={10} />
-            <span>OTIMIZANDO 360p</span>
+            <span>360p {asset.optimizingProgress ?? 0}%</span>
           </div>
         ) : asset.proxyUrl && asset.proxyUrl !== asset.url ? (
           <div className={styles.badgeProxy} title="Proxy 360p ativo (ultra-leve para edição e seek)">
