@@ -13,6 +13,7 @@ export const ShortcutsModal: React.FC = () => {
   const shortcuts = [
     { action: 'Reproduzir / Pausar Reprodução', key: 'Espaço' },
     { action: 'Avançar / Voltar Agulha Vermelha', key: '← / → (Shift = 1s)' },
+    { action: 'Ir para Início / Fim de Cada Mídia', key: '↑ / ↓ (Cortes)' },
     { action: 'Dividir clipe no playhead (Split)', key: 'S' },
     { action: 'Aumentar Zoom da Timeline', key: '+ ou =' },
     { action: 'Diminuir Zoom da Timeline', key: '-' },

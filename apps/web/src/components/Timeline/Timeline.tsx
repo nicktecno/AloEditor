@@ -543,8 +543,24 @@ export const Timeline: React.FC = () => {
 
   return (
     <div
+      id="alo_timeline_wrapper"
+      tabIndex={0}
       className={styles.timelineWrapper}
-      style={{ height: `${timelineHeight}px` }}
+      style={{ height: `${timelineHeight}px`, outline: 'none' }}
+      onPointerDown={() => {
+        if (typeof window !== 'undefined') (window as any).__isTimelineHovered = true;
+        if (typeof document !== 'undefined' && document.activeElement && document.activeElement instanceof HTMLElement) {
+          if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+            document.activeElement.blur();
+          }
+        }
+      }}
+      onMouseEnter={() => {
+        if (typeof window !== 'undefined') (window as any).__isTimelineHovered = true;
+      }}
+      onMouseLeave={() => {
+        if (typeof window !== 'undefined') (window as any).__isTimelineHovered = false;
+      }}
     >
       {/* Top Border Resize Handle */}
       <div
@@ -696,6 +712,11 @@ export const Timeline: React.FC = () => {
             value={zoom}
             className={styles.zoomSlider}
             onChange={(e) => setZoom(parseFloat(e.target.value))}
+            onKeyDown={(e) => {
+              if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', ' '].includes(e.key)) {
+                e.currentTarget.blur();
+              }
+            }}
             title="Zoom da Linha do Tempo (Atalhos: + e -)"
           />
 

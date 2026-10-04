@@ -53,6 +53,13 @@ export const TimelineRulerComponent: React.FC<TimelineRulerProps> = ({ totalDura
     e.preventDefault();
     e.stopPropagation();
 
+    if (typeof window !== 'undefined') (window as any).__isTimelineHovered = true;
+    if (typeof document !== 'undefined' && document.activeElement && document.activeElement instanceof HTMLElement) {
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+        document.activeElement.blur();
+      }
+    }
+
     const targetEl = e.currentTarget;
     try {
       targetEl.setPointerCapture(e.pointerId);

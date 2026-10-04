@@ -2597,8 +2597,28 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Keyboard shortcuts listener (<kbd>Cmd+A</kbd>, <kbd>Space</kbd>, <kbd>S</kbd>, <kbd>Delete</kbd>, <kbd>+</kbd>, <kbd>-</kbd>, etc.)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) {
+      const target = e.target as HTMLElement | null;
+      const isActualTextInput =
+        target &&
+        (target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          (target.tagName === 'INPUT' &&
+            !['range', 'checkbox', 'radio', 'button', 'submit'].includes((target as HTMLInputElement).type)));
+
+      const isTimelineActive =
+        typeof window !== 'undefined' &&
+        (Boolean((window as any).__isTimelineHovered) ||
+          Boolean(document.activeElement?.closest('#alo_timeline_wrapper')) ||
+          Boolean(document.activeElement?.closest('#alo_timeline_scrollable')));
+
+      // Se o usuário estiver ativamente digitando em um campo de texto e não estiver mexendo na timeline, respeita o campo
+      if (isActualTextInput && !isTimelineActive) {
         return;
+      }
+
+      // Se o usuário estiver mexendo na timeline, desfoca o campo de texto residual
+      if (isActualTextInput && isTimelineActive) {
+        target?.blur();
       }
 
       // Atalhos de Zoom da Timeline
@@ -2630,7 +2650,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
 
-      // Atalhos de navegação da agulha vermelha na timeline: Setas Esquerda / Direita
+      // 1. Atalhos de navegação da agulha vermelha na timeline: Setas Esquerda / Direita (Frame a Frame)
       if (e.code === 'ArrowLeft' || e.key === 'ArrowLeft') {
         e.preventDefault();
         const fps = project.settings.fps || 30;
@@ -2650,6 +2670,52 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const maxDur = Math.max(project.duration, maxClipEnd, 1);
         const next = Math.min(maxDur, parseFloat((cur + step).toFixed(3)));
         setCurrentTime(next);
+        return;
+      }
+
+      // 2. Atalhos para ir ao início ou fim de cada mídia: Setas Cima / Baixo (ArrowUp / ArrowDown)
+      if (e.code === 'ArrowUp' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const cur = currentTimeRef.current;
+        const cutPoints = Array.from(
+          new Set([
+            0,
+            ...project.clips.flatMap((c) => [
+              parseFloat(c.startInTimeline.toFixed(3)),
+              parseFloat((c.startInTimeline + c.duration).toFixed(3)),
+            ]),
+          ])
+        )
+          .filter((t) => t < cur - 0.04)
+          .sort((a, b) => b - a);
+
+        const prevCut = cutPoints.length > 0 ? cutPoints[0] : 0;
+        setCurrentTime(prevCut);
+        return;
+      }
+
+      if (e.code === 'ArrowDown' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const cur = currentTimeRef.current;
+        const maxClipEnd = project.clips.reduce(
+          (max, c) => Math.max(max, c.startInTimeline + c.duration),
+          0
+        );
+        const maxDur = Math.max(project.duration, maxClipEnd, 1);
+        const cutPoints = Array.from(
+          new Set([
+            maxDur,
+            ...project.clips.flatMap((c) => [
+              parseFloat(c.startInTimeline.toFixed(3)),
+              parseFloat((c.startInTimeline + c.duration).toFixed(3)),
+            ]),
+          ])
+        )
+          .filter((t) => t > cur + 0.04)
+          .sort((a, b) => a - b);
+
+        const nextCut = cutPoints.length > 0 ? cutPoints[0] : maxDur;
+        setCurrentTime(nextCut);
         return;
       }
 
