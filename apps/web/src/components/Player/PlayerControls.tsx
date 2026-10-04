@@ -185,6 +185,34 @@ export const PlayerControls: React.FC = () => {
             );
           }
 
+          const hasOptimizing = project.assets.some((a) => a.type === 'video' && a.status === 'optimizing');
+          if (hasOptimizing) {
+            return (
+              <div
+                className={styles.preloadBadge}
+                title="Otimizando vídeo para proxy 360p em segundo plano (ultra-leve)..."
+              >
+                <div className={styles.preloadSpinner} />
+                <span>Otimizando 360p...</span>
+              </div>
+            );
+          }
+
+          const hasProxyVideo = project.assets.some(
+            (a) => a.type === 'video' && a.proxyUrl && a.proxyUrl !== a.url
+          );
+          if (hasProxyVideo) {
+            return (
+              <div
+                className={styles.cacheReadyBadge}
+                title="Proxy 360p ativo: reprodução ultra-fluida com seek instantâneo"
+              >
+                <Zap size={12} />
+                <span>Proxy 360p Ativo</span>
+              </div>
+            );
+          }
+
           const hasCachedVideo = project.assets.some((a) => a.type === 'video' && a.proxyUrl);
           if (hasCachedVideo) {
             return (

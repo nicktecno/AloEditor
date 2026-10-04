@@ -48,7 +48,7 @@ function formatBytes(bytes: number): string {
 /**
  * Inicializa ou conecta ao IndexedDB local do navegador
  */
-function openCacheDatabase(): Promise<IDBDatabase> {
+export function openCacheDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || !window.indexedDB) {
       return reject(new Error('IndexedDB não suportado'));
@@ -672,6 +672,11 @@ export async function clearAllDriveCache(): Promise<void> {
     } catch {}
   });
   inMemoryBlobUrls.clear();
+
+  try {
+    const { clearAllProxyMemory } = await import('./videoProxyGenerator');
+    clearAllProxyMemory();
+  } catch {}
 
   try {
     const db = await openCacheDatabase();

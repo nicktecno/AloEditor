@@ -28,6 +28,7 @@ import {
 } from '@/services/googleDrive';
 import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail } from '@/utils/thumbnailGenerator';
 import { getCachedDriveVideoUrl, preloadDriveVideo, evictCachedVideo, clearAllDriveCache, cacheLocalVideoBlob } from '@/services/driveVideoCache';
+import { generate360pProxy, getCached360pProxyUrl, evict360pProxy } from '@/services/videoProxyGenerator';
 
 interface EditorContextType {
   project: Project;
@@ -483,15 +484,70 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const activeCachingTasks = useRef<Set<string>>(new Set());
 
+  // Gera versão proxy 360p leve em background (para busca instantânea a 0ms e baixo consumo de CPU/RAM/bateria)
+  const trigger360pOptimization = useCallback(
+    async (assetId: string, fileId: string, sourceUrl: string, duration?: number) => {
+      if (!sourceUrl) return;
+
+      // 1. Checa se o proxy 360p já existe no IndexedDB local
+      try {
+        const cachedProxy = await getCached360pProxyUrl(fileId);
+        if (cachedProxy) {
+          setProject((prev) => ({
+            ...prev,
+            assets: prev.assets.map((a) =>
+              a.id === assetId ? { ...a, proxyUrl: cachedProxy, status: 'ready' } : a
+            ),
+          }));
+          return;
+        }
+      } catch {}
+
+      // 2. Marca status como 'optimizing' para feedback visual imediato
+      setProject((prev) => ({
+        ...prev,
+        assets: prev.assets.map((a) =>
+          a.id === assetId ? { ...a, status: 'optimizing' } : a
+        ),
+      }));
+
+      // 3. Executa a geração em segundo plano via WebCodecs
+      try {
+        const proxyUrl = await generate360pProxy({
+          fileId,
+          sourceUrl,
+          duration,
+        });
+
+        setProject((prev) => ({
+          ...prev,
+          assets: prev.assets.map((a) =>
+            a.id === assetId
+              ? {
+                  ...a,
+                  proxyUrl: proxyUrl || a.proxyUrl || sourceUrl,
+                  status: 'ready',
+                }
+              : a
+          ),
+        }));
+      } catch (err: any) {
+        console.warn('Falha na geração de proxy 360p, mantendo vídeo original:', err);
+        setProject((prev) => ({
+          ...prev,
+          assets: prev.assets.map((a) =>
+            a.id === assetId ? { ...a, status: 'ready' } : a
+          ),
+        }));
+      }
+    },
+    []
+  );
+
   // Inicia cache e pré-carregamento imediato no navegador para vídeos (Google Drive ou Local)
   const startAssetCaching = useCallback(
     async (asset: MediaAsset) => {
       if (asset.type !== 'video') return;
-
-      const isMobile =
-        typeof window !== 'undefined' &&
-        /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
-      if (isMobile) return; // No mobile: streaming nativo leve e instantâneo via Range requests
 
       const cacheKey = asset.driveFileId || asset.id;
       if (activeCachingTasks.current.has(cacheKey)) return;
@@ -500,13 +556,15 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         const cachedUrl = await getCachedDriveVideoUrl(cacheKey);
         if (cachedUrl) {
+          const cachedProxy = await getCached360pProxyUrl(cacheKey);
           setProject((prev) => ({
             ...prev,
             assets: prev.assets.map((a) =>
               a.id === asset.id
                 ? {
                     ...a,
-                    proxyUrl: cachedUrl,
+                    url: cachedUrl,
+                    proxyUrl: cachedProxy || cachedUrl,
                     preloadProgress: 100,
                     status: 'ready',
                     isAuthExpired: false,
@@ -515,6 +573,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 : a
             ),
           }));
+
+          if (!cachedProxy) {
+            trigger360pOptimization(asset.id, cacheKey, cachedUrl, asset.duration);
+          }
           return;
         }
       } catch {}
@@ -544,6 +606,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 a.id === asset.id
                   ? {
                       ...a,
+                      url: blobUrl,
                       proxyUrl: blobUrl,
                       preloadProgress: 100,
                       status: 'ready',
@@ -553,6 +616,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   : a
               ),
             }));
+
+            // Inicia geração de proxy 360p em segundo plano
+            trigger360pOptimization(asset.id, asset.driveFileId, blobUrl, asset.duration);
           }
         } catch (err: any) {
           console.warn('Cache local em background não concluiu, mantendo reprodução via streaming:', err?.message);
@@ -569,10 +635,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             ...prev,
             assets: prev.assets.map((a) =>
               a.id === asset.id
-                ? { ...a, proxyUrl: cachedBlobUrl, preloadProgress: 100, status: 'ready' }
+                ? { ...a, url: cachedBlobUrl, proxyUrl: cachedBlobUrl, preloadProgress: 100, status: 'ready' }
                 : a
             ),
           }));
+
+          trigger360pOptimization(asset.id, asset.id, cachedBlobUrl, asset.duration);
         } catch (e) {
           console.warn('Indexação de vídeo local em background finalizada:', e);
         } finally {
@@ -582,7 +650,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         activeCachingTasks.current.delete(cacheKey);
       }
     },
-    [googleAccessToken]
+    [googleAccessToken, trigger360pOptimization]
   );
 
   // Monitora mídias pendentes de cache no projeto e inicia download progressivo imediatamente
@@ -1901,12 +1969,13 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // 1. Se já existe no cache em memória ou IndexedDB, reutiliza imediatamente
       const cachedUrl = await getCachedDriveVideoUrl(file.id);
       if (cachedUrl) {
+        const cachedProxy = await getCached360pProxyUrl(file.id);
         const readyAsset: MediaAsset = {
           id: assetId,
           name: file.name,
           type: file.mimeType.startsWith('audio') ? 'audio' : 'video',
           url: cachedUrl,
-          proxyUrl: cachedUrl,
+          proxyUrl: cachedProxy || cachedUrl,
           driveFileId: file.id,
           duration: file.durationSeconds || 15.0,
           isDrive: true,
@@ -1919,6 +1988,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addAsset(readyAsset);
         if (options?.addToTimeline !== false) {
           addClipToTrack(readyAsset, options?.targetTrackId, options?.targetStartTime);
+        }
+
+        if (!cachedProxy && readyAsset.type === 'video') {
+          trigger360pOptimization(assetId, file.id, cachedUrl, readyAsset.duration);
         }
         return readyAsset;
       }
@@ -2052,7 +2125,6 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 ? {
                     ...a,
                     url: blobUrl,
-                    proxyUrl: blobUrl,
                     status: 'ready',
                     preloadProgress: 100,
                     loadedBytes: a.size || 0,
@@ -2060,6 +2132,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 : a
             ),
           }));
+
+          // 5. Inicia otimização de proxy 360p em background para edição fluida
+          if (initialAsset.type === 'video') {
+            trigger360pOptimization(assetId, file.id, blobUrl, file.durationSeconds || initialAsset.duration);
+          }
 
           // Remove da lista de downloads ativos após um pequeno delay para mostrar 100%
           setTimeout(() => {
@@ -2073,7 +2150,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       return initialAsset;
     },
-    [googleAccessToken, addAsset, addClipToTrack, refreshGoogleToken]
+    [googleAccessToken, addAsset, addClipToTrack, refreshGoogleToken, trigger360pOptimization]
   );
 
   // Remove asset from project library (optionally removing associated clips)
@@ -2082,6 +2159,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (targetAsset) {
       if (targetAsset.driveFileId) {
         evictCachedVideo(targetAsset.driveFileId);
+        evict360pProxy(targetAsset.driveFileId);
+      } else {
+        evict360pProxy(targetAsset.id);
       }
       if (targetAsset.proxyUrl && targetAsset.proxyUrl.startsWith('blob:')) {
         try {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Volume2, Cloud, Plus, Trash2, AlertTriangle } from 'lucide-react';
+import { Volume2, Cloud, Plus, Trash2, AlertTriangle, Zap, Sparkles } from 'lucide-react';
 import { MediaAsset } from '@/types/editor';
 import { GENERIC_VIDEO_THUMBNAIL, handleThumbnailError } from '@/utils/thumbnailGenerator';
 import styles from './Sidebar.module.css';
@@ -244,25 +244,59 @@ export const MediaAssetCard: React.FC<MediaAssetCardProps> = ({ asset, onAdd, on
 
         {asset.isDrive ? (
           <div
-            className={asset.isAuthExpired ? styles.badgeOffline : styles.badgeDrive}
+            className={
+              asset.isAuthExpired
+                ? styles.badgeOffline
+                : asset.status === 'optimizing'
+                ? styles.badgeOptimizing
+                : asset.proxyUrl && asset.proxyUrl !== asset.url
+                ? styles.badgeProxy
+                : styles.badgeDrive
+            }
             title={
               asset.isAuthExpired
                 ? 'Sessão do Google Drive expirada. Reconecte para reproduzir.'
+                : asset.status === 'optimizing'
+                ? 'Otimizando para 360p em segundo plano (ultra-leve)...'
+                : asset.proxyUrl && asset.proxyUrl !== asset.url
+                ? 'Proxy 360p ativo (ultra-leve para edição e seek)'
                 : asset.proxyUrl
                 ? 'Vídeo em cache local no navegador (0ms latência)'
                 : 'Vídeo do Google Drive'
             }
           >
-            {asset.isAuthExpired ? <AlertTriangle size={10} /> : <Cloud size={10} />}
+            {asset.isAuthExpired ? (
+              <AlertTriangle size={10} />
+            ) : asset.status === 'optimizing' ? (
+              <Sparkles size={10} />
+            ) : asset.proxyUrl && asset.proxyUrl !== asset.url ? (
+              <Zap size={10} />
+            ) : (
+              <Cloud size={10} />
+            )}
             <span>
               {asset.isAuthExpired
                 ? 'DRIVE EXPIRADO'
                 : isImporting
                 ? `BAIXANDO ${asset.preloadProgress ?? 0}%`
+                : asset.status === 'optimizing'
+                ? 'OTIMIZANDO 360p'
+                : asset.proxyUrl && asset.proxyUrl !== asset.url
+                ? '360p PROXY'
                 : asset.proxyUrl
                 ? 'DRIVE • MEMÓRIA'
                 : 'DRIVE'}
             </span>
+          </div>
+        ) : asset.status === 'optimizing' ? (
+          <div className={styles.badgeOptimizing} title="Otimizando para 360p em segundo plano...">
+            <Sparkles size={10} />
+            <span>OTIMIZANDO 360p</span>
+          </div>
+        ) : asset.proxyUrl && asset.proxyUrl !== asset.url ? (
+          <div className={styles.badgeProxy} title="Proxy 360p ativo (ultra-leve para edição e seek)">
+            <Zap size={10} />
+            <span>360p PROXY</span>
           </div>
         ) : asset.proxyUrl ? (
           <div className={styles.badgeCached} title="Vídeo otimizado no cache local do navegador">
