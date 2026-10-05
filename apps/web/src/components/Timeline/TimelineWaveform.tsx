@@ -3,11 +3,12 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { TimelineClip } from '@/types/editor';
 import {
-  getWaveformPeaks,
-  generateProceduralPeaks,
-  sliceWaveformPeaks,
+  getAudioWaveformEnvelope,
+  getAmplitudeFromEnvelope,
+  generateProceduralEnvelope,
   volumeToDb,
   formatVolumeText,
+  AudioWaveformEnvelope,
 } from '@/utils/waveformGenerator';
 import { Volume2, VolumeX } from 'lucide-react';
 import styles from './Timeline.module.css';
@@ -15,6 +16,7 @@ import styles from './Timeline.module.css';
 interface TimelineWaveformProps {
   clip: TimelineClip;
   assetUrl?: string;
+  driveFileId?: string;
   assetDuration?: number;
   width: number;
   height: number;
@@ -27,6 +29,7 @@ interface TimelineWaveformProps {
 export const TimelineWaveformComponent: React.FC<TimelineWaveformProps> = ({
   clip,
   assetUrl,
+  driveFileId,
   assetDuration,
   width,
   height,
@@ -38,8 +41,9 @@ export const TimelineWaveformComponent: React.FC<TimelineWaveformProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const [rawPeaks, setRawPeaks] = useState<number[]>(() =>
-    generateProceduralPeaks(clip.assetId || clip.id, 120)
+  // Initialize with rhythmic musical/speech envelope immediately (never empty or flat)
+  const [envelopeObj, setEnvelopeObj] = useState<AudioWaveformEnvelope | null>(() =>
+    generateProceduralEnvelope(clip.assetId || clip.id, assetDuration || clip.duration || 30, 100)
   );
 
   const [isHovered, setIsHovered] = useState(false);
@@ -52,24 +56,29 @@ export const TimelineWaveformComponent: React.FC<TimelineWaveformProps> = ({
   const startVolumeRef = useRef(clip.volume);
   const currentVolumeRef = useRef(clip.volume);
 
-  // Load actual asset peaks asynchronously and update smoothly
+  // Load actual asset audio envelope asynchronously with 100% sample-accurate Web Audio decoding
   useEffect(() => {
     let isCancelled = false;
-    const loadPeaks = async () => {
+    const loadEnvelope = async () => {
       try {
-        const peaks = await getWaveformPeaks(assetUrl, 160, clip.assetId || clip.id);
-        if (!isCancelled && peaks && peaks.length > 0) {
-          setRawPeaks(peaks);
+        const env = await getAudioWaveformEnvelope(
+          assetUrl,
+          driveFileId,
+          clip.assetId || clip.id,
+          assetDuration || clip.duration || 30
+        );
+        if (!isCancelled && env && env.envelope && env.envelope.length > 0) {
+          setEnvelopeObj(env);
         }
       } catch {
-        // Fallback already in place
+        // Fallback procedural envelope already active
       }
     };
-    loadPeaks();
+    loadEnvelope();
     return () => {
       isCancelled = true;
     };
-  }, [assetUrl, clip.assetId, clip.id]);
+  }, [assetUrl, driveFileId, clip.assetId, clip.id, assetDuration, clip.duration]);
 
   // Keep volume ref up to date
   useEffect(() => {
@@ -79,7 +88,7 @@ export const TimelineWaveformComponent: React.FC<TimelineWaveformProps> = ({
     }
   }, [clip.volume]);
 
-  // Draw waveform on canvas with retina crispness
+  // Draw CapCut continuous mountain waveform on canvas with Retina crispness
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -88,8 +97,8 @@ export const TimelineWaveformComponent: React.FC<TimelineWaveformProps> = ({
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const renderWidth = Math.max(10, width);
-    const renderHeight = Math.max(16, height);
+    const renderWidth = Math.max(10, Math.round(width));
+    const renderHeight = Math.max(14, Math.round(height));
 
     canvas.width = renderWidth * dpr;
     canvas.height = renderHeight * dpr;
@@ -97,65 +106,95 @@ export const TimelineWaveformComponent: React.FC<TimelineWaveformProps> = ({
 
     ctx.clearRect(0, 0, renderWidth, renderHeight);
 
-    // Number of bars based on width (each bar is ~2px with 1.5px gap)
-    const barWidth = 2;
-    const barGap = 1.5;
-    const barTotal = barWidth + barGap;
-    const barCount = Math.max(8, Math.floor(renderWidth / barTotal));
-
-    const totalDur = assetDuration || clip.duration + (clip.trimStart || 0);
-    const sliced = sliceWaveformPeaks(
-      rawPeaks,
-      clip.trimStart || 0,
-      clip.duration,
-      totalDur,
-      clip.speed || 1.0,
-      barCount
-    );
-
     const isMuted = clip.isMuted || clip.volume <= 0.001;
     const effectiveVol = isMuted ? 0 : isDraggingVolume ? dragVolume : clip.volume;
-    const isAudioTrack = colorScheme === 'audio';
 
-    // Amplitude modulation with volume: 1.0 = normal, scaling naturally up to 1.5
-    const volumeFactor = Math.min(1.5, Math.max(0.1, effectiveVol));
+    // Amplitude modulation with volume: 1.0 = 100%, up to 1.5x
+    const volumeFactor = Math.min(1.5, Math.max(0.0, effectiveVol));
 
-    sliced.forEach((peak, i) => {
-      const x = i * barTotal + 1;
-      if (x + barWidth > renderWidth) return;
+    // CapCut Waveform Geometry:
+    // Solid flat baseline anchored at the bottom edge (3px from bottom)
+    const baselineY = renderHeight - 3;
+    const availableHeight = Math.max(6, baselineY - 3);
 
-      const rawPeakHeight = Math.max(2, peak * (renderHeight - 4));
-      const peakHeight = isMuted ? 2 : Math.max(2, Math.min(renderHeight - 2, rawPeakHeight * volumeFactor));
+    const trimStart = clip.trimStart || 0;
+    const clipDuration = clip.duration || 1;
+    const speed = clip.speed || 1.0;
+    const mediaDurationInWindow = clipDuration * speed;
 
-      // Audio track uses centered waveform (classic soundwave); video uses bottom or centered
-      const y = isAudioTrack
-        ? Math.round((renderHeight - peakHeight) / 2)
-        : renderHeight - peakHeight;
+    // 1. Draw continuous filled mountain silhouette (CapCut vector wave)
+    ctx.beginPath();
+    ctx.moveTo(0, baselineY);
 
-      if (isMuted) {
-        ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
-      } else if (colorScheme === 'video') {
-        // CapCut Video Waveform: Mint / Emerald Glow
-        const grad = ctx.createLinearGradient(0, y, 0, renderHeight);
-        grad.addColorStop(0, '#34d399'); // emerald-400
-        grad.addColorStop(1, '#059669'); // emerald-600
-        ctx.fillStyle = grad;
-      } else {
-        // CapCut Audio Track: Vibrant Sky Cyan to Emerald
-        const grad = ctx.createLinearGradient(0, y, 0, y + peakHeight);
-        grad.addColorStop(0, '#38bdf8'); // sky-400
-        grad.addColorStop(0.5, '#34d399'); // emerald-400
-        grad.addColorStop(1, '#059669'); // emerald-600
-        ctx.fillStyle = grad;
-      }
+    for (let x = 0; x <= renderWidth; x++) {
+      const timeInMedia = trimStart + (x / renderWidth) * mediaDurationInWindow;
+      const rawAmp = getAmplitudeFromEnvelope(envelopeObj, timeInMedia);
+      const scaledAmp = isMuted ? 0 : Math.min(1.0, rawAmp * volumeFactor);
+      const peakHeight = Math.max(1, scaledAmp * availableHeight);
+      const y = Math.max(2, baselineY - peakHeight);
 
-      // Rounded vertical bar (fully rounded caps for soundwave dots/bars)
-      const radius = 1;
+      ctx.lineTo(x, y);
+    }
+
+    ctx.lineTo(renderWidth, baselineY);
+    ctx.lineTo(0, baselineY);
+    ctx.closePath();
+
+    // CapCut Vibrant Solid Color Fill:
+    // Audio track: signature CapCut vibrant cyan (#00b4d8)
+    // Video track: emerald mint (#059669)
+    if (isMuted) {
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.25)';
+    } else if (colorScheme === 'video') {
+      ctx.fillStyle = '#059669';
+    } else {
+      ctx.fillStyle = '#00b4d8';
+    }
+    ctx.fill();
+
+    // 2. Crisp top contour stroke for sharp vector definition
+    if (!isMuted) {
       ctx.beginPath();
-      ctx.roundRect(x, y, barWidth, peakHeight, [radius, radius, radius, radius]);
-      ctx.fill();
-    });
-  }, [width, height, rawPeaks, clip.trimStart, clip.duration, clip.speed, clip.volume, clip.isMuted, isDraggingVolume, dragVolume, assetDuration, colorScheme]);
+      for (let x = 0; x <= renderWidth; x++) {
+        const timeInMedia = trimStart + (x / renderWidth) * mediaDurationInWindow;
+        const rawAmp = getAmplitudeFromEnvelope(envelopeObj, timeInMedia);
+        const scaledAmp = Math.min(1.0, rawAmp * volumeFactor);
+        const peakHeight = Math.max(1, scaledAmp * availableHeight);
+        const y = Math.max(2, baselineY - peakHeight);
+
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = colorScheme === 'video' ? '#34d399' : '#38bdf8';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+
+    // 3. Crisp horizontal baseline across the bottom
+    ctx.beginPath();
+    ctx.moveTo(0, baselineY);
+    ctx.lineTo(renderWidth, baselineY);
+    ctx.strokeStyle = isMuted
+      ? 'rgba(148, 163, 184, 0.3)'
+      : colorScheme === 'video'
+      ? '#047857'
+      : '#0096c7';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+  }, [
+    width,
+    height,
+    envelopeObj,
+    clip.trimStart,
+    clip.duration,
+    clip.speed,
+    clip.volume,
+    clip.isMuted,
+    isDraggingVolume,
+    dragVolume,
+    colorScheme,
+  ]);
 
   // Volume line position: 0% = 3px from bottom; 100% = ~62% of height; 150% = ~92%
   const activeVol = isDraggingVolume ? dragVolume : clip.volume;
@@ -303,4 +342,3 @@ export const TimelineWaveformComponent: React.FC<TimelineWaveformProps> = ({
 };
 
 export const TimelineWaveform = React.memo(TimelineWaveformComponent);
-

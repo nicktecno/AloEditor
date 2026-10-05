@@ -797,6 +797,35 @@
   overflow: hidden;
 }
 
+/* CapCut Audio Title Badge at Bottom-Left */
+.audioBottomTitleBadge {
+  position: absolute;
+  bottom: 3px;
+  left: 6px;
+  max-width: calc(100% - 16px);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(18, 18, 20, 0.82);
+  backdrop-filter: blur(4px);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  pointer-events: none;
+  z-index: 7;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.audioClipTitleText {
+  font-size: 10px;
+  font-weight: 600;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.2px;
+}
+
 /* Audio Waveform Canvas & Envelope Container */
 .waveformContainer {
   position: relative;

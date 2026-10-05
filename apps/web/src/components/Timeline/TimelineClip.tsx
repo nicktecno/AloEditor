@@ -598,6 +598,7 @@ export const TimelineClipComponent: React.FC<TimelineClipProps> = ({ clip }) => 
             <TimelineWaveform
               clip={clip}
               assetUrl={asset?.proxyUrl || asset?.url}
+              driveFileId={asset?.driveFileId}
               assetDuration={asset?.duration}
               width={widthPos}
               height={26}
@@ -614,29 +615,14 @@ export const TimelineClipComponent: React.FC<TimelineClipProps> = ({ clip }) => 
         </div>
       ) : clip.type === 'audio' ? (
         <div className={styles.audioClipContainer}>
-          {/* Audio Title Overlay */}
-          <div className={styles.audioTopInfoOverlay}>
-            <Music size={12} color="#34d399" style={{ flexShrink: 0 }} />
-            {clip.isMuted && <VolumeX size={12} color="#f43f5e" style={{ flexShrink: 0 }} />}
-            {widthPos >= 40 && (
-              <span className={styles.clipName} title={clip.name} style={{ fontSize: '11px', color: '#ecfdf5' }}>
-                {clip.name}
-              </span>
-            )}
-            {widthPos >= 30 && (
-              <span className={styles.clipDuration} style={{ fontSize: '10px', color: '#a7f3d0' }}>
-                {clip.duration.toFixed(1)}s
-              </span>
-            )}
-          </div>
-
-          {/* Full Waveform with Volume Envelope */}
+          {/* Full Waveform with Volume Envelope (Fills the entire 36px clip) */}
           <TimelineWaveform
             clip={clip}
             assetUrl={asset?.proxyUrl || asset?.url}
+            driveFileId={asset?.driveFileId}
             assetDuration={asset?.duration}
             width={widthPos}
-            height={34}
+            height={36}
             colorScheme="audio"
             onVolumeChange={(newVol) => updateClip(clip.id, { volume: newVol })}
             onVolumeCommit={() => commitHistory()}
@@ -646,6 +632,22 @@ export const TimelineClipComponent: React.FC<TimelineClipProps> = ({ clip }) => 
               toggleInspector(true);
             }}
           />
+
+          {/* CapCut Title Pill Badge at Bottom-Left (matches attached screenshot) */}
+          <div className={styles.audioBottomTitleBadge}>
+            <Music size={10} color="#38bdf8" style={{ flexShrink: 0 }} />
+            {clip.isMuted && <VolumeX size={10} color="#f43f5e" style={{ flexShrink: 0 }} />}
+            {widthPos >= 50 && (
+              <span className={styles.audioClipTitleText} title={clip.name}>
+                {clip.name}
+              </span>
+            )}
+            {widthPos >= 120 && (
+              <span style={{ fontSize: '9px', color: '#94a3b8', marginLeft: '2px' }}>
+                {clip.duration.toFixed(1)}s
+              </span>
+            )}
+          </div>
         </div>
       ) : (
         /* Text Track Clip (Slim 36px) */
