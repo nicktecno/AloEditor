@@ -43,6 +43,15 @@ interface EditorContextType {
   previewQuality: PlaybackQuality;
   setPreviewQuality: (quality: PlaybackQuality) => void;
   isSnappingEnabled: boolean;
+  isMagneticMode: boolean;
+  toggleMagneticMode: () => void;
+  playbackSpeed: number;
+  setPlaybackSpeed: (speed: number) => void;
+  closeAllGaps: (targetTrackId?: string) => void;
+  rippleTrimHead: (targetClipId?: string) => void;
+  rippleTrimTail: (targetClipId?: string) => void;
+  freezeFrameAtPlayhead: () => Promise<void>;
+  rippleDeleteClips: (clipIds?: string[]) => void;
   snapGuideTime: number | null;
   setSnapGuideTime: (time: number | null) => void;
   isDriveConnected: boolean;
@@ -209,6 +218,26 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [zoom, setZoom] = useState(60); // 60px = 1 second
   const [previewQuality, setPreviewQuality] = useState<PlaybackQuality>('low'); // Padrão leve e rápido
   const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
+  const [isMagneticMode, setIsMagneticMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('alo_magnetic_mode') === 'true';
+    }
+    return false;
+  });
+
+  const toggleMagneticMode = useCallback(() => {
+    setIsMagneticMode((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('alo_magnetic_mode', String(next));
+        } catch {}
+      }
+      return next;
+    });
+  }, []);
+
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
   const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
 
   // Responsive initial screen detection
@@ -1264,7 +1293,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       );
 
       if (!hasActiveVideo) {
-        const nextTime = curTime + delta;
+        const nextTime = curTime + delta * (playbackSpeed || 1.0);
         if (nextTime >= projectRef.current.duration) {
           setIsPlaying(false);
           setCurrentTime(0);
@@ -1576,24 +1605,314 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, [pushHistory]);
 
-  // Delete single clip
+  // Ripple Delete: remove clip(s) and shift subsequent clips left on each affected track
+  const rippleDeleteClips = useCallback((clipIdsToDel?: string[]) => {
+    const ids = clipIdsToDel || selectedClipIds;
+    if (ids.length === 0) return;
+    const idsSet = new Set(ids);
+
+    updateProjectWithHistory((prev) => {
+      // Group clips by track
+      const tracksMap = new Map<string, TimelineClip[]>();
+      for (const c of prev.clips) {
+        if (!tracksMap.has(c.trackId)) tracksMap.set(c.trackId, []);
+        tracksMap.get(c.trackId)!.push(c);
+      }
+
+      const resultClips: TimelineClip[] = [];
+
+      for (const [trackId, trackClips] of tracksMap.entries()) {
+        const sorted = [...trackClips].sort((a, b) => a.startInTimeline - b.startInTimeline);
+        let shift = 0;
+        for (const clip of sorted) {
+          if (idsSet.has(clip.id)) {
+            shift += clip.duration;
+          } else {
+            const newStart = Math.max(0, clip.startInTimeline - shift);
+            resultClips.push({
+              ...clip,
+              startInTimeline: newStart,
+            });
+          }
+        }
+      }
+
+      const maxClipEnd = resultClips.reduce((max, c) => Math.max(max, c.startInTimeline + c.duration), 0);
+      return {
+        ...prev,
+        clips: resultClips,
+        duration: Math.max(prev.duration, maxClipEnd + 2),
+      };
+    });
+
+    setSelectedClipIds([]);
+  }, [selectedClipIds, updateProjectWithHistory]);
+
+  // Delete single clip (automatically ripples if isMagneticMode is active)
   const deleteClip = useCallback((clipId: string) => {
+    if (isMagneticMode) {
+      rippleDeleteClips([clipId]);
+      return;
+    }
     updateProjectWithHistory((prev) => ({
       ...prev,
       clips: prev.clips.filter((c) => c.id !== clipId),
     }));
     setSelectedClipIds((prev) => prev.filter((id) => id !== clipId));
-  }, [updateProjectWithHistory]);
+  }, [isMagneticMode, rippleDeleteClips, updateProjectWithHistory]);
 
-  // Delete all selected clips
+  // Delete all selected clips (automatically ripples if isMagneticMode is active)
   const deleteSelectedClips = useCallback(() => {
     if (selectedClipIds.length === 0) return;
+    if (isMagneticMode) {
+      rippleDeleteClips(selectedClipIds);
+      return;
+    }
     updateProjectWithHistory((prev) => ({
       ...prev,
       clips: prev.clips.filter((c) => !selectedClipIds.includes(c.id)),
     }));
     setSelectedClipIds([]);
-  }, [selectedClipIds, updateProjectWithHistory]);
+  }, [selectedClipIds, isMagneticMode, rippleDeleteClips, updateProjectWithHistory]);
+
+  // Close all empty gaps on tracks, packing clips contiguously from 0s
+  const closeAllGaps = useCallback((targetTrackId?: string) => {
+    updateProjectWithHistory((prev) => {
+      const tracksToProcess = targetTrackId 
+        ? [targetTrackId] 
+        : Array.from(new Set(prev.clips.map((c) => c.trackId)));
+
+      let updatedClips = [...prev.clips];
+
+      for (const trackId of tracksToProcess) {
+        const trackClips = updatedClips
+          .filter((c) => c.trackId === trackId)
+          .sort((a, b) => a.startInTimeline - b.startInTimeline);
+
+        let currentCursor = 0;
+        const remappedTrackClips = trackClips.map((clip) => {
+          const newClip = {
+            ...clip,
+            startInTimeline: currentCursor,
+          };
+          currentCursor += clip.duration;
+          return newClip;
+        });
+
+        updatedClips = updatedClips
+          .filter((c) => c.trackId !== trackId)
+          .concat(remappedTrackClips);
+      }
+
+      const maxEnd = updatedClips.reduce((max, c) => Math.max(max, c.startInTimeline + c.duration), 0);
+      return {
+        ...prev,
+        clips: updatedClips,
+        duration: Math.max(prev.duration, maxEnd + 2),
+      };
+    });
+  }, [updateProjectWithHistory]);
+
+  // Q: Ripple trim head (start of clip up to playhead, shift subsequent clips left)
+  const rippleTrimHead = useCallback((targetClipId?: string) => {
+    const cur = currentTimeRef.current;
+    const clip = targetClipId 
+      ? project.clips.find((c) => c.id === targetClipId)
+      : (selectedClip || project.clips.find(
+          (c) => cur >= c.startInTimeline && cur <= c.startInTimeline + c.duration
+        ));
+
+    if (!clip) return;
+    if (cur <= clip.startInTimeline + 0.05 || cur >= clip.startInTimeline + clip.duration - 0.05) {
+      return;
+    }
+
+    const cutOffset = cur - clip.startInTimeline;
+    const newDuration = clip.duration - cutOffset;
+    const newTrimStart = clip.trimStart + (cutOffset * clip.speed);
+
+    updateProjectWithHistory((prev) => {
+      const updatedClips = prev.clips.map((c) => {
+        if (c.id === clip.id) {
+          return {
+            ...c,
+            duration: newDuration,
+            trimStart: newTrimStart,
+          };
+        }
+        if (c.trackId === clip.trackId && c.startInTimeline > clip.startInTimeline) {
+          return {
+            ...c,
+            startInTimeline: Math.max(0, c.startInTimeline - cutOffset),
+          };
+        }
+        return c;
+      });
+
+      return {
+        ...prev,
+        clips: updatedClips,
+      };
+    });
+
+    setCurrentTime(clip.startInTimeline);
+  }, [project.clips, selectedClip, updateProjectWithHistory, setCurrentTime]);
+
+  // W: Ripple trim tail (playhead up to end of clip, shift subsequent clips left)
+  const rippleTrimTail = useCallback((targetClipId?: string) => {
+    const cur = currentTimeRef.current;
+    const clip = targetClipId 
+      ? project.clips.find((c) => c.id === targetClipId)
+      : (selectedClip || project.clips.find(
+          (c) => cur >= c.startInTimeline && cur <= c.startInTimeline + c.duration
+        ));
+
+    if (!clip) return;
+    if (cur <= clip.startInTimeline + 0.05 || cur >= clip.startInTimeline + clip.duration - 0.05) {
+      return;
+    }
+
+    const cutOffset = (clip.startInTimeline + clip.duration) - cur;
+    const newDuration = cur - clip.startInTimeline;
+    const newTrimEnd = clip.trimStart + (newDuration * clip.speed);
+
+    updateProjectWithHistory((prev) => {
+      const updatedClips = prev.clips.map((c) => {
+        if (c.id === clip.id) {
+          return {
+            ...c,
+            duration: newDuration,
+            trimEnd: newTrimEnd,
+          };
+        }
+        if (c.trackId === clip.trackId && c.startInTimeline > clip.startInTimeline) {
+          return {
+            ...c,
+            startInTimeline: Math.max(0, c.startInTimeline - cutOffset),
+          };
+        }
+        return c;
+      });
+
+      return {
+        ...prev,
+        clips: updatedClips,
+      };
+    });
+
+    setCurrentTime(cur);
+  }, [project.clips, selectedClip, updateProjectWithHistory, setCurrentTime]);
+
+  // Freeze frame at playhead: captures video frame at playhead and inserts 2.5s still image clip with ripple
+  const freezeFrameAtPlayhead = useCallback(async () => {
+    const cur = currentTimeRef.current;
+    const targetClip = (selectedClip && selectedClip.type === 'video')
+      ? selectedClip
+      : project.clips.find(
+          (c) => c.type === 'video' && cur >= c.startInTimeline && cur <= c.startInTimeline + c.duration
+        );
+
+    if (!targetClip) {
+      alert('Posicione a agulha sobre um clipe de vídeo para congelar o quadro (Freeze Frame).');
+      return;
+    }
+
+    const asset = project.assets.find((a) => a.id === targetClip.assetId);
+    const FREEZE_DURATION = 2.5;
+
+    let frameDataUrl: string | null = null;
+    const videoEl = document.querySelector('video') as HTMLVideoElement | null;
+    if (videoEl && videoEl.videoWidth > 0) {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.min(videoEl.videoWidth, 1920);
+        canvas.height = Math.min(videoEl.videoHeight, 1080);
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+          frameDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        }
+      } catch {}
+    }
+
+    if (!frameDataUrl && asset) {
+      const sourceTime = targetClip.trimStart + (cur - targetClip.startInTimeline) * targetClip.speed;
+      frameDataUrl = await captureVideoThumbnail(asset.proxyUrl || asset.url, sourceTime);
+    }
+
+    if (!frameDataUrl) {
+      frameDataUrl = GENERIC_VIDEO_THUMBNAIL;
+    }
+
+    const freezeAssetId = `freeze_asset_${Date.now()}`;
+    const freezeAsset: MediaAsset = {
+      id: freezeAssetId,
+      name: `Quadro Congelado (${cur.toFixed(1)}s)`,
+      type: 'image',
+      url: frameDataUrl,
+      thumbnailUrl: frameDataUrl,
+      duration: FREEZE_DURATION,
+    };
+
+    const freezeClipId = `clip_freeze_${Date.now()}`;
+    const freezeClip: TimelineClip = {
+      id: freezeClipId,
+      trackId: targetClip.trackId,
+      assetId: freezeAssetId,
+      name: `Congelado (${cur.toFixed(1)}s)`,
+      type: 'image',
+      startInTimeline: cur,
+      duration: FREEZE_DURATION,
+      trimStart: 0,
+      trimEnd: FREEZE_DURATION,
+      speed: 1,
+      volume: 0,
+      transform: { ...targetClip.transform },
+      filters: { ...targetClip.filters },
+    };
+
+    const splitOffset = cur - targetClip.startInTimeline;
+    const firstDuration = splitOffset;
+    const secondDuration = targetClip.duration - splitOffset;
+
+    const firstClip: TimelineClip = {
+      ...targetClip,
+      duration: firstDuration,
+      trimEnd: targetClip.trimStart + (firstDuration * targetClip.speed),
+    };
+
+    const secondClip: TimelineClip = {
+      ...targetClip,
+      id: `clip_${Date.now()}_post`,
+      startInTimeline: cur + FREEZE_DURATION,
+      duration: secondDuration,
+      trimStart: targetClip.trimStart + (firstDuration * targetClip.speed),
+      trimEnd: targetClip.trimEnd,
+    };
+
+    updateProjectWithHistory((prev) => {
+      const otherClips = prev.clips
+        .filter((c) => c.id !== targetClip.id)
+        .map((c) => {
+          if (c.trackId === targetClip.trackId && c.startInTimeline >= cur - 0.01) {
+            return {
+              ...c,
+              startInTimeline: c.startInTimeline + FREEZE_DURATION,
+            };
+          }
+          return c;
+        });
+
+      return {
+        ...prev,
+        assets: [...prev.assets, freezeAsset],
+        clips: [...otherClips, firstClip, freezeClip, secondClip],
+        duration: Math.max(prev.duration, cur + FREEZE_DURATION + secondDuration + 2),
+      };
+    });
+
+    setSelectedClipIds([freezeClipId]);
+  }, [project.clips, project.assets, selectedClip, updateProjectWithHistory, setSelectedClipIds]);
 
   // Split clip at playhead
   const splitClipAtPlayhead = useCallback((targetClipId?: string) => {
@@ -2819,9 +3138,42 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } else if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         splitClipAtPlayhead();
+      } else if (e.code === 'KeyQ' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        rippleTrimHead();
+      } else if (e.code === 'KeyW' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        rippleTrimTail();
+      } else if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        freezeFrameAtPlayhead();
+      } else if (e.code === 'KeyK' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        togglePlay();
+        setPlaybackSpeed(1);
+      } else if (e.code === 'KeyL' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        if (!isPlaying) {
+          setIsPlaying(true);
+          setPlaybackSpeed(1);
+        } else {
+          setPlaybackSpeed((prev) => (prev === 1 ? 2 : prev === 2 ? 4 : 1));
+        }
+      } else if (e.code === 'KeyJ' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        if (playbackSpeed > 1) {
+          setPlaybackSpeed(1);
+        } else {
+          const cur = currentTimeRef.current;
+          setCurrentTime(Math.max(0, cur - 1.0));
+        }
       } else if (e.code === 'Delete' || e.code === 'Backspace') {
         e.preventDefault();
-        deleteSelectedClips();
+        if (e.shiftKey) {
+          rippleDeleteClips();
+        } else {
+          deleteSelectedClips();
+        }
       } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
         e.preventDefault();
         if (e.shiftKey) {
@@ -2843,6 +3195,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [
     togglePlay,
     splitClipAtPlayhead,
+    rippleTrimHead,
+    rippleTrimTail,
+    freezeFrameAtPlayhead,
+    rippleDeleteClips,
     deleteSelectedClips,
     selectedClipId,
     selectAllClips,
@@ -2853,6 +3209,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     zoomOut,
     zoomToFit,
     setCurrentTime,
+    setPlaybackSpeed,
+    isPlaying,
+    setIsPlaying,
+    playbackSpeed,
     project.settings.fps,
     project.clips,
     project.duration,
@@ -2884,6 +3244,15 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         previewQuality,
         setPreviewQuality,
         isSnappingEnabled,
+        isMagneticMode,
+        toggleMagneticMode,
+        playbackSpeed,
+        setPlaybackSpeed,
+        closeAllGaps,
+        rippleTrimHead,
+        rippleTrimTail,
+        freezeFrameAtPlayhead,
+        rippleDeleteClips,
         snapGuideTime,
         setSnapGuideTime,
         isDriveConnected,

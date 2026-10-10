@@ -22,8 +22,9 @@ const AudioTrackPlayer: React.FC<{
   assetUrl: string;
   currentTime: number;
   isPlaying: boolean;
+  playbackSpeed?: number;
   onSyncDuration?: (assetId: string, duration: number) => void;
-}> = ({ clip, assetUrl, currentTime, isPlaying, onSyncDuration }) => {
+}> = ({ clip, assetUrl, currentTime, isPlaying, playbackSpeed = 1, onSyncDuration }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastClipIdRef = useRef<string | null>(null);
   const isAudioPlayPendingRef = useRef<boolean>(false);
@@ -86,7 +87,7 @@ const AudioTrackPlayer: React.FC<{
       }
     } catch {}
 
-    const targetRate = clip.speed || 1.0;
+    const targetRate = (clip.speed || 1.0) * (playbackSpeed || 1.0);
     if (audioRef.current.playbackRate !== targetRate) {
       audioRef.current.playbackRate = targetRate;
     }
@@ -147,6 +148,7 @@ export const PlayerPreview: React.FC = () => {
     refreshGoogleToken,
     setIsDrivePickerOpen,
     previewQuality,
+    playbackSpeed,
   } = useEditor();
 
   const [isBuffering, setIsBuffering] = React.useState(false);
@@ -477,7 +479,7 @@ export const PlayerPreview: React.FC = () => {
       }
     } catch {}
 
-    const targetRate = activeMainClip.speed || 1.0;
+    const targetRate = (activeMainClip.speed || 1.0) * (playbackSpeed || 1.0);
     if (mainVideoRef.current.playbackRate !== targetRate) {
       mainVideoRef.current.playbackRate = targetRate;
     }
@@ -524,7 +526,7 @@ export const PlayerPreview: React.FC = () => {
       }
     } catch {}
 
-    const targetRate = activeOverlayClip.speed || 1.0;
+    const targetRate = (activeOverlayClip.speed || 1.0) * (playbackSpeed || 1.0);
     if (overlayVideoRef.current.playbackRate !== targetRate) {
       overlayVideoRef.current.playbackRate = targetRate;
     }
@@ -1256,6 +1258,7 @@ export const PlayerPreview: React.FC = () => {
               assetUrl={asset.proxyUrl || asset.url}
               currentTime={currentTime}
               isPlaying={isPlaying}
+              playbackSpeed={playbackSpeed}
               onSyncDuration={syncMediaDuration}
             />
           );

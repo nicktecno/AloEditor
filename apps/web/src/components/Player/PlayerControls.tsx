@@ -35,6 +35,8 @@ export const PlayerControls: React.FC = () => {
     splitClipAtPlayhead,
     previewQuality,
     setPreviewQuality,
+    playbackSpeed,
+    setPlaybackSpeed,
   } = useEditor();
 
   const handleStepBackward = () => {
@@ -102,6 +104,26 @@ export const PlayerControls: React.FC = () => {
         >
           {isPlaying ? <Pause size={18} /> : <Play size={18} style={{ marginLeft: '2px' }} />}
         </button>
+
+        {playbackSpeed > 1 && (
+          <button
+            onClick={() => setPlaybackSpeed(1)}
+            title="Velocidade Shuttle ativa. Clique para voltar a 1x"
+            style={{
+              background: 'rgba(56, 189, 248, 0.2)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              color: '#38bdf8',
+              borderRadius: '6px',
+              padding: '2px 6px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              lineHeight: 1,
+            }}
+          >
+            {playbackSpeed}x
+          </button>
+        )}
 
         <button
           className={`${styles.controlBtn} ${styles.stepBtn}`}

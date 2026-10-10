@@ -29,6 +29,8 @@ import {
   Sparkles,
   Undo2,
   Redo2,
+  Snowflake,
+  AlignLeft,
 } from 'lucide-react';
 import { GENERIC_VIDEO_THUMBNAIL, captureVideoThumbnail, getMediaDuration } from '@/utils/thumbnailGenerator';
 import { MediaAsset } from '@/types/editor';
@@ -51,6 +53,12 @@ export const Timeline: React.FC = () => {
     selectAllClips,
     clearSelection,
     splitClipAtPlayhead,
+    rippleTrimHead,
+    rippleTrimTail,
+    freezeFrameAtPlayhead,
+    closeAllGaps,
+    isMagneticMode,
+    toggleMagneticMode,
     deleteSelectedClips,
     duplicateClip,
     detachAudioFromClip,
@@ -608,6 +616,38 @@ export const Timeline: React.FC = () => {
 
           <button
             className={styles.toolBtn}
+            onClick={() => rippleTrimHead()}
+            title="Aparar Início: remove do início do clipe até a agulha com ripple (Atalho: Q)"
+          >
+            <Scissors size={15} style={{ transform: 'scaleX(-1)' }} color="#38bdf8" />
+            <span>Aparar Início (Q)</span>
+          </button>
+
+          <button
+            className={styles.toolBtn}
+            onClick={() => rippleTrimTail()}
+            title="Aparar Fim: remove da agulha até o fim do clipe com ripple (Atalho: W)"
+          >
+            <Scissors size={15} color="#38bdf8" />
+            <span>Aparar Fim (W)</span>
+          </button>
+
+          <button
+            className={styles.toolBtn}
+            onClick={() => freezeFrameAtPlayhead()}
+            title="Congelar Quadro: insere quadro estático de 2.5s na agulha com ripple (Atalho: F)"
+            style={{
+              background: 'rgba(56, 189, 248, 0.12)',
+              borderColor: 'rgba(56, 189, 248, 0.35)',
+              color: '#38bdf8',
+            }}
+          >
+            <Snowflake size={15} color="#38bdf8" />
+            <span>Congelar (F)</span>
+          </button>
+
+          <button
+            className={styles.toolBtn}
             onClick={() => setIsSilenceModalOpen(true)}
             disabled={!selectedClip || (selectedClip.type !== 'video' && selectedClip.type !== 'audio')}
             title="Auto Cut estilo CapCut: Identificar e cortar silêncios (> 1.0s) automaticamente"
@@ -626,7 +666,7 @@ export const Timeline: React.FC = () => {
             className={styles.toolBtn}
             onClick={deleteSelectedClips}
             disabled={selectedClipIds.length === 0}
-            title="Excluir clipes selecionados (Del / Backspace)"
+            title="Excluir clipes selecionados (Del / Backspace) [Shift+Del para Ripple]"
           >
             <Trash2 size={15} color="var(--accent-rose)" />
             <span>Excluir</span>
@@ -651,6 +691,15 @@ export const Timeline: React.FC = () => {
           >
             <Volume2 size={15} color={selectedClip?.type === 'video' ? '#34d399' : undefined} />
             <span>Desvincular Áudio</span>
+          </button>
+
+          <button
+            className={styles.toolBtn}
+            onClick={() => closeAllGaps()}
+            title="Fechar todas as lacunas vazias entre clipes na timeline"
+          >
+            <AlignLeft size={15} color="var(--accent-cyan)" />
+            <span>Fechar Lacunas</span>
           </button>
 
           <button
@@ -685,12 +734,26 @@ export const Timeline: React.FC = () => {
           <div className={styles.toolDivider} />
 
           <button
+            className={`${styles.toolBtn} ${isMagneticMode ? styles.toolBtnActive : ''}`}
+            onClick={toggleMagneticMode}
+            title="Timeline Magnética: fecha lacunas automaticamente ao cortar ou excluir clipes (estilo Concat/CapCut)"
+            style={{
+              background: isMagneticMode ? 'rgba(56, 189, 248, 0.18)' : undefined,
+              borderColor: isMagneticMode ? '#38bdf8' : undefined,
+              color: isMagneticMode ? '#38bdf8' : undefined,
+            }}
+          >
+            <Magnet size={15} />
+            <span>Timeline Magnética {isMagneticMode ? 'ON' : 'OFF'}</span>
+          </button>
+
+          <button
             className={`${styles.toolBtn} ${isSnappingEnabled ? styles.toolBtnActive : ''}`}
             onClick={toggleSnapping}
             title="Encaixe Magnético (Snap)"
           >
             <Magnet size={15} />
-            <span>Magnetismo {isSnappingEnabled ? 'Ativado' : 'Desativado'}</span>
+            <span>Snap {isSnappingEnabled ? 'ON' : 'OFF'}</span>
           </button>
         </div>
 
